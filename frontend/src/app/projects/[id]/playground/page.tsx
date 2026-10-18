@@ -8,6 +8,8 @@ import {
   exampleBody,
   workflowWrites,
 } from '@/lib/playground';
+import { api } from '@/lib/api';
+import { operationById, type OpenApiDocument } from '@/lib/api-docs';
 import { ApiError } from '@/lib/api';
 import type {
   Project,
@@ -96,16 +98,24 @@ function Playground() {
         list: op === 'list',
       })),
     ),
-    ...['signup', 'login', 'me', 'logout'].map((action) => ({
-      id: `auth:${action}`,
-      label: `${action === 'me' ? 'GET' : 'POST'} auth/${action}`,
-      resource: `auth/${action}`,
-      method: action === 'me' ? 'GET' : 'POST',
-      record: false,
-      list: false,
-    })),
+    ...['signup', 'login', 'me', 'logout']
+      .map((action) => ({
+        id: `auth:${action}`,
+        label: `${action === 'me' ? 'GET' : 'POST'} auth/${action}`,
+        resource: `auth/${action}`,
+        method: action === 'me' ? 'GET' : 'POST',
+        record: false,
+        list: false,
+      })),
     ...(w.data ?? [])
-      .filter((w) => w.publishedVersionId)
+      .filter(
+        (w) =>
+          w.publishedVersionId &&
+          w.enabled &&
+          w.publishedDefinition &&
+          w.readiness?.state !== 'blocked' &&
+          w.readiness?.state !== 'stale',
+      )
       .map((w) => ({
         id: `workflow:${w.id}`,
         label: `POST ${w.path} (${w.enabled ? 'enabled' : 'disabled'})`,
@@ -129,6 +139,70 @@ function Playground() {
   const selectedWorkflow = w.data?.find(
     (w) => values.target === `workflow:${w.id}`,
   );
+  const handoff = search.get('operationId');
+  const handled = useRef('');
+  useEffect(() => {
+    if (
+      !handoff ||
+      !e.data ||
+      !w.data ||
+      !tables.data ||
+      auth.isPending ||
+      handled.current === handoff
+    )
+      return;
+    let cancelled = false;
+    void api<OpenApiDocument>(`projects/${id}/openapi`)
+      .then((doc) => {
+        if (cancelled) return;
+        const match = operationById(doc, handoff);
+        const choice =
+          match &&
+          choices.find(
+            (c) =>
+              c.method.toLowerCase() === match.method &&
+              `/${c.resource}${c.record ? '/{id}' : ''}` === match.path,
+          );
+        if (!match || !choice)
+          throw new Error(
+            'This deployed operation is no longer available. Reload Docs.',
+          );
+        handled.current = handoff;
+        f.setValue('target', choice.id);
+        f.setValue(
+          'body',
+          JSON.stringify(
+            match.operation.requestBody?.content['application/json']?.example ??
+              {},
+            null,
+            2,
+          ),
+        );
+        f.setValue(
+          'credentialMode',
+          match.operation['x-access-policy'] === 'public'
+            ? 'none'
+            : match.operation['x-access-policy'] === 'key_only'
+              ? 'key'
+              : 'session',
+        );
+        f.setValue('credential', '');
+        setError(null);
+        setResult(null);
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          handled.current = handoff;
+          f.setValue('target', '');
+          setError(error);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Resolve only after metadata loads; no request execution occurs in this effect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [handoff, id, e.data, w.data, tables.data, auth.data, auth.isPending]);
   function generateExample() {
     if (selectedTable)
       f.setValue(
@@ -147,21 +221,18 @@ function Playground() {
         'body',
         JSON.stringify(
           Object.fromEntries(
-            Object.entries(
-              (
-                selectedWorkflow.publishedDefinition ??
-                selectedWorkflow.draftDefinition
-              ).input,
-            ).map(([name, field]) => [
-              name,
-              field.type === 'boolean'
-                ? true
-                : field.type === 'integer'
-                  ? 1
-                  : field.type === 'uuid'
-                    ? '00000000-0000-4000-8000-000000000000'
-                    : 'example',
-            ]),
+            Object.entries(selectedWorkflow.publishedDefinition!.input).map(
+              ([name, field]) => [
+                name,
+                field.type === 'boolean'
+                  ? true
+                  : field.type === 'integer'
+                    ? 1
+                    : field.type === 'uuid'
+                      ? '00000000-0000-4000-8000-000000000000'
+                      : 'example',
+              ],
+            ),
           ),
           null,
           2,
@@ -220,10 +291,7 @@ function Playground() {
                 ? 'No credential; supply email and password.'
                 : 'Application session token'
               : selectedWorkflow
-                ? (
-                    selectedWorkflow.publishedDefinition ??
-                    selectedWorkflow.draftDefinition
-                  ).auth === 'key_only'
+                ? selectedWorkflow.publishedDefinition!.auth === 'key_only'
                   ? 'API key required'
                   : 'Signed-in user required'
                 : policy.mode === 'key_only'
@@ -293,10 +361,7 @@ function Playground() {
                   if (
                     selectedWorkflow &&
                     workflowWrites(
-                      (
-                        selectedWorkflow.publishedDefinition ??
-                        selectedWorkflow.draftDefinition
-                      ).steps,
+                      selectedWorkflow.publishedDefinition!.steps,
                     ) &&
                     !confirm(
                       'This workflow may write to your connected database. Send this request?',

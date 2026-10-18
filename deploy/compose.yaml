@@ -49,6 +49,7 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: production
+      PUBLIC_RUNTIME_ORIGIN: https://${API_DOMAIN:?Required}
       HOST: 0.0.0.0
       PORT: "3000"
       PLATFORM_DATABASE_URL: postgresql://platform_app:${POSTGRES_APP_PASSWORD:?Required}@platform-postgres:5432/platform

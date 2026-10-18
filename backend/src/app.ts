@@ -1,3 +1,6 @@
+import { docsRoutes } from './modules/api-docs/routes.js';
+import { DocsService } from './modules/api-docs/service.js';
+import type { DocsRepository } from './modules/api-docs/types.js';
 import { DestinationError } from './security/customer-destination.js';
 import { workflowRoutes } from './modules/workflows/routes.js';
 import { WorkflowService } from './modules/workflows/service.js';
@@ -65,6 +68,7 @@ export function buildApp(options: {
   projectRepository: ProjectRepository;
   logger?: boolean;
   readiness?: () => Promise<void>;
+  docsRepository?: DocsRepository;
   connectionRepository?: ConnectionRepository;
   connectionTester?: ConnectionTester;
   schemaRepository?: SchemaRepository;
@@ -209,6 +213,7 @@ export function buildApp(options: {
         'onRequest',
         platformSessionAuth(platformAuth),
       );
+      if (options.docsRepository) await internal.register(docsRoutes, { service: new DocsService(options.docsRepository, options.env.publicRuntimeOrigin) });
       if (options.workflowRepository)
         await internal.register(workflowRoutes, {
           service: new WorkflowService(options.workflowRepository),

@@ -1,3 +1,4 @@
+import { PostgresDocsRepository } from './modules/api-docs/repository.js';
 import { createReadiness } from './database/platform-db/readiness.js';
 import { PostgresWorkflowRepository } from './modules/workflows/repository.js';
 import { PostgresAuthRepository } from './modules/project-auth/repository.js';
@@ -16,7 +17,7 @@ async function main() {
   const env = loadEnv();
   const { db, pool } = createPlatformDatabase(env.databaseUrl);
   const readiness = createReadiness(env.databaseUrl);
-  const app = buildApp({ env, readiness: readiness.check, platformAuthRepository: new PostgresPlatformAuthRepository(db), projectRepository: new PostgresProjectRepository(db),
+  const app = buildApp({ env, docsRepository: new PostgresDocsRepository(db), readiness: readiness.check, platformAuthRepository: new PostgresPlatformAuthRepository(db), projectRepository: new PostgresProjectRepository(db),
     connectionRepository: new PostgresConnectionRepository(db), schemaRepository: new PostgresSchemaRepository(db), endpointRepository: new PostgresEndpointRepository(db),
     apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), workflowRepository: new PostgresWorkflowRepository(db) });
   pool.on('error', () => app.log.error('Platform database pool error'));

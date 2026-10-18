@@ -9,6 +9,7 @@ export interface Env {
   trustedProxyIps: string[];
   connectionEncryptionKey: string;
   runtimeAllowedOrigins: string[];
+  publicRuntimeOrigin: string;
 }
 
 export const uuidPattern = '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$';
@@ -30,6 +31,11 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (!['development', 'test', 'production'].includes(nodeEnv)) {
     throw new Error('NODE_ENV must be development, test, or production');
   }
+  const publicRuntimeOrigin = source.PUBLIC_RUNTIME_ORIGIN ?? (nodeEnv === 'production' ? '' : 'http://127.0.0.1:3000');
+  try {
+    const url = new URL(publicRuntimeOrigin);
+    if (url.origin !== publicRuntimeOrigin || url.username || url.password || !['http:', 'https:'].includes(url.protocol) || (nodeEnv === 'production' && url.protocol !== 'https:')) throw new Error();
+  } catch { throw new Error('PUBLIC_RUNTIME_ORIGIN must be an exact HTTP(S) origin; production requires HTTPS'); }
   const portText = source.PORT ?? '3000';
   const port = Number(portText);
   if (!/^\d+$/.test(portText) || !Number.isInteger(port) || port < 1 || port > 65535) {
@@ -53,6 +59,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     } catch { throw new Error('RUNTIME_ALLOWED_ORIGINS must contain comma-separated HTTP(S) origins'); }
   }
   return {
+    publicRuntimeOrigin,
     runtimeAllowedOrigins: [...new Set(runtimeAllowedOrigins)],
     connectionEncryptionKey,
     nodeEnv: nodeEnv as Env['nodeEnv'], host, port,

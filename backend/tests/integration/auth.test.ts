@@ -1,3 +1,5 @@
+import { PostgresDocsRepository } from '../../src/modules/api-docs/repository.js';
+import { Validator } from '@seriousme/openapi-schema-validator';
 import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -46,7 +48,7 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
   const projectRepository = new PostgresProjectRepository(db); const schemaRepository = new PostgresSchemaRepository(db);
   const project = await projectRepository.create(ownerId, { name: 'Auth', slug: `auth-${randomUUID()}` }); ids.push(project.id);
   const other = await projectRepository.create(otherOwnerId, { name: 'Other auth', slug: `auth-${randomUUID()}` }); ids.push(other.id);
-  const dependencies = { projectRepository, schemaRepository, connectionRepository: new PostgresConnectionRepository(db), endpointRepository: new PostgresEndpointRepository(db),
+  const dependencies = { docsRepository: new PostgresDocsRepository(db), projectRepository, schemaRepository, connectionRepository: new PostgresConnectionRepository(db), endpointRepository: new PostgresEndpointRepository(db),
     apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), logger: false as const };
   const app = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
   const otherApp = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId), env, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
@@ -148,6 +150,27 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     for (const operation of [{ method: 'POST' as const, url: `${base}/orders`, payload: { title: 'key-bypass' } },
       { method: 'PATCH' as const, url: `${base}/orders/${randomUUID()}`, payload: { title: 'key-bypass' } },
       { method: 'DELETE' as const, url: `${base}/orders/${randomUUID()}` }]) assert.equal((await app.inject({ ...operation, headers: bearer(key) })).statusCode, 401);
+  });
+  await t.test('downloaded contract examples exercise application signup/login and owner CRUD', async () => {
+    const downloaded = await app.inject({ url: `${management}/openapi`, headers: auth });
+    assert.equal(downloaded.statusCode, 200, downloaded.body);
+    const doc = downloaded.json(); assert.equal((await new Validator().validate(doc)).valid, true);
+    assert.equal((await otherApp.inject({ url: `${management}/openapi`, headers: auth })).statusCode, 404);
+    const example = (path: string, method: string) => doc.paths[path][method].requestBody.content['application/json'].example;
+    const signupBody = { ...example('/auth/signup', 'post'), email: 'documented@example.test' };
+    const signup = await app.inject({ method: 'POST', url: `${base}/auth/signup`, payload: signupBody });
+    assert.equal(signup.statusCode, 201, signup.body); assert.ok(doc.paths['/auth/signup'].post.responses[signup.statusCode]);
+    const login = await app.inject({ method: 'POST', url: `${base}/auth/login`, payload: signupBody });
+    assert.equal(login.statusCode, 200, login.body); assert.equal(typeof login.json().token, 'string');
+    const headers = bearer(login.json().token);
+    const created = await app.inject({ method: 'POST', url: `${base}/orders`, headers, payload: example('/orders', 'post') });
+    assert.equal(created.statusCode, 201, created.body); assert.equal(created.json().owner_id, signup.json().id);
+    const rowUrl = `${base}/orders/${created.json().id}`;
+    for (const url of [`${base}/orders`, rowUrl]) assert.equal((await app.inject({ url, headers })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'PATCH', url: rowUrl, headers, payload: example('/orders/{id}', 'patch') })).statusCode, 200);
+    assert.equal((await app.inject({ method: 'DELETE', url: rowUrl, headers })).statusCode, 204);
+    assert.ok(!doc.paths['/orders'].post.requestBody.content['application/json'].schema.properties.owner_id);
+    assert.ok(!doc.paths['/orders/{id}'].patch.requestBody.content['application/json'].schema.properties.owner_id);
   });
   await t.test('Alice and Bob can create owned orders but cannot read, transfer, patch, or delete each other’s rows', async () => {
     const create = async (token: string, title: string) => app.inject({ method: 'POST', url: `${base}/orders`, headers: bearer(token), payload: { title } });

@@ -153,3 +153,27 @@ Platform/customer auth counters and hashing/runtime capacity are process-local; 
 For application rollback, deploy previous compatible immutable image tags/digests and wait for readiness/smoke checks. Never automatically down-migrate. Prefer forward repair; backup restore is a deliberate downtime/data-loss recovery operation. A newer schema may be incompatible with old readiness/application code. Customer schema changes are independent and are not undone by platform-image rollback.
 
 Limitations: no email verification/reset, invitations, teams, billing, enterprise secrets manager, multi-region/HA, automatic failover or scaling. Customer availability, TLS certificates and connection quotas affect runtime. Schema/workflow mutation limits and uncertain-write recovery remain as documented in the product README. This milestone adds no production email, queues, observability platform, Kubernetes or Terraform.
+
+## Generated API documentation
+
+Set `PUBLIC_RUNTIME_ORIGIN` consistently for backend and frontend. Compose supplies
+`https://${API_DOMAIN}` to both; `BACKEND_ORIGIN` remains private. Backend production
+startup requires an exact HTTPS origin. No migration is required for API Docs.
+
+Project owners can open Docs and download OpenAPI 3.1 JSON. Documents are generated
+on demand from applied schema, current enabled operations/auth, and published enabled
+workflows. They are never public routes. Blocked deployment metadata, unavailable
+applied definitions, or stale enabled workflows return sanitized `API_DOCS_UNAVAILABLE`
+(503); resolve deployment state or republish/disable the stale workflow and retry.
+Generation does not connect to customer databases or detect live external drift.
+The document's fixed `info.version` identifies the document contract, not versioned API releases.
+
+Verify after deployment: sign in, open a project's Docs page, confirm the public API
+server URL, download JSON, and use Try in Playground. It must select and populate an
+operation without sending a request. A second platform account must receive 404 for
+that project's management OpenAPI endpoint. Public `/internal` stays blocked by Caddy.
+
+For independent local validation with backend dev dependencies installed:
+`cd backend && npm exec -- validate-api /path/to/project-openapi.json`.
+Workflow dynamic database results deliberately use unconstrained JSON schemas.
+Examples are synthetic; stored defaults and workflow literal values are never copied.

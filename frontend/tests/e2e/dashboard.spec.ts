@@ -323,6 +323,32 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
   await clickSave(
     page.getByRole('button', { name: 'Enable workflow', exact: true }),
   );
+  await go('docs');
+  await expect(page.getByRole('heading', { name: 'API documentation', exact: true })).toBeVisible();
+  const exported = await page.request.get(`/api/management${projectUrl}/openapi`);
+  expect(exported.status()).toBe(200);
+  const openapi = await exported.json();
+  expect(openapi.openapi).toBe('3.1.0');
+  expect(openapi.servers[0].url).toContain('/api/demo-');
+  expect(openapi.paths['/accept-order'].post.responses['201']).toBeTruthy();
+  expect(openapi.paths['/accept-order'].post.responses['422']).toBeTruthy();
+  expect(openapi.paths['/auth/login'].post).toBeTruthy();
+  const downloaded = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Download openapi.json' }).click();
+  expect((await downloaded).suggestedFilename()).toMatch(/-openapi.json$/);
+  let runtimeRequests = 0;
+  const countRuntime = (request: import('@playwright/test').Request) => { if (request.url().includes('/api/runtime/')) runtimeRequests++; };
+  page.on('request', countRuntime);
+  await page.locator('article').filter({ has: page.getByRole('heading', { name: 'POST /accept-order', exact: true }) }).getByRole('link', { name: 'Try in Playground' }).click();
+  await expect(page.getByRole('combobox', { name: 'Endpoint', exact: true })).toHaveValue(/^workflow:/);
+  await expect(page.getByLabel('JSON request body', { exact: true })).toHaveValue(/"accept": false/);
+  await expect(page.getByRole('combobox', { name: 'Credential mode', exact: true })).toHaveValue('key');
+  expect(runtimeRequests).toBe(0);
+  await expect(page.getByTestId('response-status')).toHaveCount(0);
+  page.off('request', countRuntime);
+  await page.goto(projectUrl + '/playground?operationId=workflow_missing');
+  await expect(page.getByRole('alert').filter({ hasText: 'no longer available' })).toContainText('no longer available');
+  await expect(page.getByRole('button', { name: 'Send request', exact: true })).toBeDisabled();
   await go('playground');
   await credentials('key', key);
   await choose(/^GET products$/);
@@ -352,9 +378,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
     page.getByRole('button', { name: 'Disable workflow', exact: true }),
   );
   await go('playground');
-  await choose(/^POST accept-order/);
-  await credentials('session', alice.token);
-  await send(404, { accept: true });
+  await expect(page.getByRole('combobox', { name: 'Endpoint', exact: true }).locator('option').filter({ hasText: 'POST accept-order' })).toHaveCount(0);
   await page.reload();
   await expect(
     page.getByRole('combobox', { name: 'Credential mode', exact: true }),

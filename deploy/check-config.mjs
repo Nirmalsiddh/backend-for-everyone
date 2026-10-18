@@ -9,4 +9,6 @@ assert.equal(config.networks.database.internal, true);
 assert.ok(!config.services.frontend.networks.database);
 assert.match(config.services.backend.environment.PLATFORM_DATABASE_URL, /platform_app:/);
 assert.match(config.services.migrate.environment.PLATFORM_DATABASE_URL, /platform_migrator:/);
+assert.equal(config.services.backend.environment.PUBLIC_RUNTIME_ORIGIN, config.services.frontend.environment.PUBLIC_RUNTIME_ORIGIN);
+assert.match(config.services.backend.environment.PUBLIC_RUNTIME_ORIGIN, /^https:\/\//);
 console.log('Compose publication, network isolation and database role checks passed');

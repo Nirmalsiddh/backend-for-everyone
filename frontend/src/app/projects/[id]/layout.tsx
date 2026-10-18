@@ -16,6 +16,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
           ['keys', 'API keys'],
           ['auth', 'Authentication'],
           ['workflows', 'Workflows'],
+          ['docs', 'Docs'],
           ['playground', 'Playground'],
         ].map(([path, label]) => (
           <Link key={path} href={`/projects/${id}${path ? '/' + path : ''}`}>

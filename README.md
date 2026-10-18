@@ -482,3 +482,13 @@ Management schema responses now exclude internal catalog snapshots and include s
 ## Private-alpha deployment
 
 See [the one-server deployment runbook](deploy/README.md) for Docker Compose, HTTPS, approved customer destinations, backup/restore, smoke checks, release and rollback. Local development remains separate.
+
+### Generated API Docs
+
+Open **Docs** inside a project to inspect deployed runtime CRUD, application authentication,
+and published enabled workflows, download OpenAPI 3.1 JSON, or select an operation in
+Playground without executing it. Set backend and frontend `PUBLIC_RUNTIME_ORIGIN` to
+the same public runtime origin (local example: `http://127.0.0.1:3000`). Docs are owner-only
+and use applied/published metadata; drafts are excluded. No database migration is needed.
+A 503 `API_DOCS_UNAVAILABLE` means deployment metadata needs review, or an enabled
+workflow needs republishing after a schema change. Generation does not inspect customer DBs.

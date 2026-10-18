@@ -21,6 +21,7 @@ test('two platform accounts, opaque HttpOnly sessions, reload, ownership and rev
   await signupLogin(b);
   await b.goto(projectUrl); await expect(b.getByRole('alert').filter({ hasText: 'PROJECT_NOT_FOUND' })).toContainText(/not found|unavailable/i);
   const denied = await other.request.get('/api/management/' + projectUrl.slice(1)); expect(denied.status()).toBe(404);
+  const deniedDocs = await other.request.get('/api/management/' + projectUrl.slice(1) + '/openapi'); expect(deniedDocs.status()).toBe(404);
   await b.getByRole('button', { name: 'Log out', exact: true }).click(); await expect(b).toHaveURL(/\/login$/);
   await other.close();
   await page.getByRole('button', { name: 'Log out', exact: true }).click(); await expect(page).toHaveURL(/\/login$/);

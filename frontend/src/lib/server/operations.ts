@@ -90,6 +90,8 @@ export const operations: Operation[] = [
   })),
   rule(`schema/tables/${uuid}/api`, ['GET', 'PUT'], endpoint),
   rule('endpoints', ['GET'], endpoint),
+  // This route returns the backend's explicit public document DTO, never raw metadata.
+  rule('openapi', ['GET'], (d) => pick(d, ['openapi', 'info', 'servers', 'paths', 'components'])),
   rule('api-keys', ['GET', 'POST'], (d, m) =>
     keys([
       'id',
