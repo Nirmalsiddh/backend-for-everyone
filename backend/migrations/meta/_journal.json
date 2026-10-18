@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1792260619711,
+      "tag": "0000_platform_foundation",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792261976257,
+      "tag": "0001_database_connections",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792262879741,
+      "tag": "0002_schema_builder",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792264159150,
+      "tag": "0003_predefined_runtime",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792265289385,
+      "tag": "0004_end_user_auth",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792266451433,
+      "tag": "0005_custom_workflows",
+      "breakpoints": true
+    }
+  ]
+}

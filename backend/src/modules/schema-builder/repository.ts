@@ -1,0 +1,311 @@
+import { randomUUID } from 'node:crypto';
+import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import type { PlatformDatabase } from '../../database/platform-db/client.js';
+import {
+  databaseConnections,
+  projects,
+  schemaFields,
+  schemaMigrations,
+  schemaTables,
+} from '../../database/platform-db/schema.js';
+import { conflict, missing } from './errors.js';
+import { generatePlan } from './plan.js';
+import { normalizeDraft, validateTargetSchema } from './validation.js';
+import type {
+  DraftInput,
+  MigrationStatus,
+  Plan,
+  SchemaRepository,
+  TableRecord,
+} from './types.js';
+
+type Transaction = Parameters<
+  Parameters<PlatformDatabase['transaction']>[0]
+>[0];
+type Reader = PlatformDatabase | Transaction;
+export class PostgresSchemaRepository implements SchemaRepository {
+  constructor(private readonly db: PlatformDatabase) {}
+  private owned(projectId: string, ownerId: string) {
+    return and(
+      eq(schemaTables.projectId, projectId),
+      inArray(
+        schemaTables.projectId,
+        this.db
+          .select({ id: projects.id })
+          .from(projects)
+          .where(eq(projects.ownerId, ownerId)),
+      ),
+    );
+  }
+  private async project(reader: Reader, projectId: string, ownerId: string) {
+    const [project] = await reader
+      .select({ id: projects.id })
+      .from(projects)
+      .where(and(eq(projects.id, projectId), eq(projects.ownerId, ownerId)));
+    if (!project) throw missing();
+  }
+  private async lock(tx: Transaction, projectId: string, ownerId: string) {
+    await this.project(tx, projectId, ownerId);
+    const [connection] = await tx
+      .select()
+      .from(databaseConnections)
+      .where(eq(databaseConnections.projectId, projectId))
+      .for('update');
+    if (!connection) throw conflict('A saved database connection is required');
+    return connection;
+  }
+  private async idle(tx: Transaction, projectId: string) {
+    const [active] = await tx
+      .select({ id: schemaMigrations.id })
+      .from(schemaMigrations)
+      .where(
+        and(
+          eq(schemaMigrations.projectId, projectId),
+          inArray(schemaMigrations.status, ['applying', 'outcome_unknown']),
+        ),
+      )
+      .limit(1);
+    if (active)
+      throw conflict(
+        'An apply is in progress or requires operator reconciliation',
+      );
+  }
+  private async read(
+    reader: Reader,
+    projectId: string,
+    ownerId: string,
+    tableId: string,
+  ): Promise<TableRecord> {
+    const [table] = await reader
+      .select()
+      .from(schemaTables)
+      .where(and(this.owned(projectId, ownerId), eq(schemaTables.id, tableId)));
+    if (!table) throw missing();
+    const fields = await reader
+      .select()
+      .from(schemaFields)
+      .where(eq(schemaFields.tableId, tableId))
+      .orderBy(asc(schemaFields.position));
+    const [applyStatus] = await reader
+      .select({
+        status: schemaMigrations.status,
+        migrationId: schemaMigrations.id,
+        errorCode: schemaMigrations.errorCode,
+        completedAt: schemaMigrations.completedAt,
+      })
+      .from(schemaMigrations)
+      .where(
+        and(
+          eq(schemaMigrations.projectId, projectId),
+          eq(schemaMigrations.tableId, tableId),
+        ),
+      )
+      .orderBy(desc(schemaMigrations.createdAt), desc(schemaMigrations.id))
+      .limit(1);
+    return {
+      ...table,
+      applyStatus: applyStatus ?? null,
+      fields: fields.map(({ tableId: _tableId, ...field }) => field),
+    };
+  }
+  async list(projectId: string, ownerId: string) {
+    await this.project(this.db, projectId, ownerId);
+    const tables = await this.db
+      .select({ id: schemaTables.id })
+      .from(schemaTables)
+      .where(this.owned(projectId, ownerId))
+      .orderBy(asc(schemaTables.createdAt), asc(schemaTables.id));
+    return Promise.all(
+      tables.map((table) => this.read(this.db, projectId, ownerId, table.id)),
+    );
+  }
+  async get(projectId: string, ownerId: string, tableId: string) {
+    return this.read(this.db, projectId, ownerId, tableId);
+  }
+  async create(
+    projectId: string,
+    ownerId: string,
+    input: DraftInput,
+    target: {
+      connectionId: string;
+      encryptedConfig: string;
+      schemaName: string;
+    },
+  ) {
+    return this.translateConflict(() =>
+      this.db.transaction(async (tx) => {
+        const connection = await this.lock(tx, projectId, ownerId);
+        if (
+          connection.id !== target.connectionId ||
+          connection.encryptedConfig !== target.encryptedConfig
+        )
+          throw conflict('Database connection changed');
+        await this.idle(tx, projectId);
+        validateTargetSchema(target.schemaName);
+        const draft = normalizeDraft(input);
+        const [table] = await tx
+          .insert(schemaTables)
+          .values({
+            projectId,
+            connectionId: connection.id,
+            schemaName: target.schemaName,
+            name: draft.name,
+          })
+          .returning();
+        if (!table) throw new Error('Insert returned no table');
+        if (draft.fields.length)
+          await tx
+            .insert(schemaFields)
+            .values(
+              draft.fields.map((field) => ({ ...field, tableId: table.id })),
+            );
+        return { ...table, fields: draft.fields };
+      }),
+    );
+  }
+  async update(
+    projectId: string,
+    ownerId: string,
+    tableId: string,
+    revision: number,
+    input: DraftInput,
+  ) {
+    return this.translateConflict(() =>
+      this.db.transaction(async (tx) => {
+        await this.lock(tx, projectId, ownerId);
+        const table = await this.read(tx, projectId, ownerId, tableId);
+        await this.idle(tx, projectId);
+        if (revision !== table.draftRevision)
+          throw conflict('Draft revision changed');
+        const draft = normalizeDraft(input, table.fields);
+        const candidate = {
+          ...table,
+          ...draft,
+          draftRevision: table.draftRevision + 1,
+          updatedAt: new Date(),
+        };
+        if (table.appliedDefinition) generatePlan(candidate);
+        await tx
+          .update(schemaTables)
+          .set({
+            name: draft.name,
+            draftRevision: candidate.draftRevision,
+            updatedAt: candidate.updatedAt,
+          })
+          .where(
+            and(this.owned(projectId, ownerId), eq(schemaTables.id, tableId)),
+          );
+        await tx.delete(schemaFields).where(eq(schemaFields.tableId, tableId));
+        if (draft.fields.length)
+          await tx
+            .insert(schemaFields)
+            .values(draft.fields.map((field) => ({ ...field, tableId })));
+        return candidate;
+      }),
+    );
+  }
+  async delete(projectId: string, ownerId: string, tableId: string) {
+    await this.db.transaction(async (tx) => {
+      await this.lock(tx, projectId, ownerId);
+      const table = await this.read(tx, projectId, ownerId, tableId);
+      await this.idle(tx, projectId);
+      if (table.appliedDefinition)
+        throw conflict('Applied tables cannot be deleted');
+      await tx
+        .delete(schemaTables)
+        .where(
+          and(this.owned(projectId, ownerId), eq(schemaTables.id, tableId)),
+        );
+    });
+  }
+  async begin(projectId: string, ownerId: string, tableId: string, plan: Plan) {
+    return this.translateConflict(() =>
+      this.db.transaction(async (tx) => {
+        await this.lock(tx, projectId, ownerId);
+        await this.idle(tx, projectId);
+        const table = await this.read(tx, projectId, ownerId, tableId);
+        if (generatePlan(table).hash !== plan.hash)
+          throw conflict('Draft or applied revision changed');
+        const id = randomUUID();
+        await tx
+          .insert(schemaMigrations)
+          .values({
+            id,
+            projectId,
+            tableId,
+            draftRevision: plan.revision,
+            planHash: plan.hash,
+            definition: plan.definition,
+            status: 'applying',
+          });
+        return id;
+      }),
+    );
+  }
+  async finish(
+    projectId: string,
+    ownerId: string,
+    tableId: string,
+    migrationId: string,
+    plan: Plan,
+    status: Exclude<MigrationStatus, 'applying'>,
+    catalog: unknown,
+    errorCode: string | null,
+  ) {
+    await this.db.transaction(async (tx) => {
+      await this.lock(tx, projectId, ownerId);
+      const table = await this.read(tx, projectId, ownerId, tableId);
+      const [migration] = await tx
+        .select()
+        .from(schemaMigrations)
+        .where(
+          and(
+            eq(schemaMigrations.id, migrationId),
+            eq(schemaMigrations.projectId, projectId),
+            eq(schemaMigrations.tableId, tableId),
+            eq(schemaMigrations.status, 'applying'),
+          ),
+        )
+        .for('update');
+      if (
+        !migration ||
+        migration.planHash !== plan.hash ||
+        table.draftRevision !== plan.revision
+      )
+        throw conflict('Migration state changed');
+      if (status === 'applied')
+        await tx
+          .update(schemaTables)
+          .set({
+            appliedRevision: plan.revision,
+            appliedDefinition: { definition: plan.definition, catalog },
+            updatedAt: new Date(),
+          })
+          .where(
+            and(this.owned(projectId, ownerId), eq(schemaTables.id, tableId)),
+          );
+      await tx
+        .update(schemaMigrations)
+        .set({ status, errorCode, completedAt: new Date() })
+        .where(eq(schemaMigrations.id, migrationId));
+    });
+  }
+  private async translateConflict<T>(operation: () => Promise<T>): Promise<T> {
+    try {
+      return await operation();
+    } catch (error) {
+      const cause =
+        error && typeof error === 'object' && 'cause' in error
+          ? error.cause
+          : error;
+      if (
+        cause &&
+        typeof cause === 'object' &&
+        'code' in cause &&
+        cause.code === '23505'
+      )
+        throw conflict('Table name is already reserved or an apply is active');
+      throw error;
+    }
+  }
+}

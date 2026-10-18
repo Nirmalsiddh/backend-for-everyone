@@ -1,0 +1,383 @@
+'use client';
+import { fieldTypes } from '../../../../shared/public-contracts.js';
+import { useEffect, useState } from 'react';
+import { useForm, useFieldArray } from 'react-hook-form';
+import { api } from '@/lib/api';
+import type { Table, FieldType } from '@/lib/contracts';
+import {
+  emptyField,
+  toForm,
+  validateFields,
+  type FieldForm,
+} from '@/lib/schema-form';
+import { useAction, ActionState, DirtyGuard } from '@/components/ui';
+const types = fieldTypes;
+export function SchemaEditor({
+  path,
+  table,
+  onCreated,
+}: {
+  path: string;
+  table?: Table;
+  onCreated?: (t: Table) => void;
+}) {
+  const [savedRevision, setSavedRevision] = useState(table?.draftRevision);
+  const action = useAction({
+    refresh: [path, path.split('/schema')[0] + '/schema'],
+    success: 'Schema operation completed; saved status refreshed',
+  });
+  const [preview, setPreview] = useState<{
+    sql: string;
+    planHash: string;
+    draftRevision: number;
+  } | null>(null);
+  const f = useForm<{ name: string; fields: FieldForm[] }>({
+    defaultValues: {
+      name: table?.name ?? '',
+      fields: table?.fields.map(toForm) ?? [],
+    },
+  });
+  const rows = useFieldArray({
+    control: f.control,
+    name: 'fields',
+    keyName: 'formKey',
+  });
+  const values = f.watch();
+  useEffect(() => {
+    if (table && !f.formState.isDirty && !action.busy) {
+      f.reset({ name: table.name, fields: table.fields.map(toForm) });
+      setSavedRevision(table.draftRevision);
+    }
+  }, [table?.draftRevision, action.busy, f.formState.isDirty]);
+  const applied = new Set(
+    table?.appliedDefinition?.definition.fields.map((x) => x.id),
+  );
+  async function saveValues(v: { name: string; fields: FieldForm[] }) {
+    return action.run(
+      async () => {
+        const fields = validateFields(v.fields);
+        const t = await api<Table>(
+          table ? path + '/draft' : path,
+          table ? 'PUT' : 'POST',
+          {
+            name: v.name,
+            fields,
+            ...(table ? { expectedDraftRevision: savedRevision } : {}),
+          },
+        );
+        f.reset({ name: t.name, fields: t.fields.map(toForm) });
+        setSavedRevision(t.draftRevision);
+        setPreview(null);
+        return t;
+      },
+      onCreated,
+      table ? 'Schema draft saved' : 'Table draft created',
+    );
+  }
+  async function saveForNavigation() {
+    let success = false;
+    await f.handleSubmit(async (v) => {
+      success = !!(await saveValues(v));
+    })();
+    return success;
+  }
+  return (
+    <>
+      <DirtyGuard
+        dirty={f.formState.isDirty}
+        save={table ? saveForNavigation : undefined}
+        discard={() => f.reset()}
+      />
+      <form onSubmit={f.handleSubmit(saveValues)}>
+        <label>
+          Table name
+          <input
+            {...f.register('name')}
+            required
+            disabled={table?.appliedRevision != null}
+          />
+        </label>
+        <p className="warning">
+          After first apply, existing fields cannot be renamed, dropped, or
+          changed in this MVP. Only new nullable fields without defaults or
+          uniqueness may be added. For owner-protected records, add a UUID
+          ownership field such as owner_id before applying; existing rows will
+          not acquire an owner automatically.
+        </p>
+        <p>
+          Read-only generated field: <code>id UUID PRIMARY KEY</code>, generated
+          automatically.
+        </p>
+        {rows.fields.map((row, i) => {
+          const locked = !!row.id && applied.has(row.id);
+          const value = values.fields[i];
+          return (
+            <fieldset key={row.formKey} disabled={locked || action.busy}>
+              <legend>
+                Field {i + 1}
+                {locked ? ' · applied, read-only' : ''}
+              </legend>
+              <div className="row">
+                <label>
+                  Field name
+                  <input {...f.register(`fields.${i}.name`)} required />
+                </label>
+                <label>
+                  Type
+                  <select
+                    {...f.register(`fields.${i}.type`, {
+                      onChange: () => {
+                        f.setValue(`fields.${i}.unique`, false, {
+                          shouldDirty: true,
+                        });
+                        f.setValue(`fields.${i}.defaultKind`, 'none', {
+                          shouldDirty: true,
+                        });
+                      },
+                    })}
+                  >
+                    {types.map((t) => (
+                      <option key={t}>{t}</option>
+                    ))}
+                  </select>
+                </label>
+                {value.type === 'varchar' && (
+                  <label>
+                    Length
+                    <input
+                      type="number"
+                      {...f.register(`fields.${i}.length`)}
+                      min={1}
+                      max={10000}
+                    />
+                  </label>
+                )}
+                {value.type === 'decimal' && (
+                  <>
+                    <label>
+                      Precision
+                      <input
+                        type="number"
+                        {...f.register(`fields.${i}.precision`)}
+                        min={1}
+                        max={38}
+                      />
+                    </label>
+                    <label>
+                      Scale
+                      <input
+                        type="number"
+                        {...f.register(`fields.${i}.scale`)}
+                        min={0}
+                      />
+                    </label>
+                  </>
+                )}
+              </div>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  checked={!value.nullable}
+                  onChange={(e) =>
+                    f.setValue(`fields.${i}.nullable`, !e.target.checked, {
+                      shouldDirty: true,
+                    })
+                  }
+                  disabled={table?.appliedRevision != null}
+                />
+                Required
+              </label>
+              <label className="check">
+                <input
+                  type="checkbox"
+                  {...f.register(`fields.${i}.unique`)}
+                  disabled={
+                    table?.appliedRevision != null || value.type === 'jsonb'
+                  }
+                />
+                Unique
+              </label>
+              <label>
+                Default
+                <select
+                  {...f.register(`fields.${i}.defaultKind`)}
+                  disabled={table?.appliedRevision != null}
+                >
+                  <option value="none">None</option>
+                  <option value="literal">Typed literal</option>
+                  {value.type === 'timestamp' && (
+                    <option value="current_timestamp">Current timestamp</option>
+                  )}
+                </select>
+              </label>
+              {value.defaultKind === 'literal' && (
+                <label>
+                  Default value
+                  {value.type === 'boolean' ? (
+                    <select {...f.register(`fields.${i}.defaultText`)}>
+                      <option value="">Choose boolean</option>
+                      <option value="true">true</option>
+                      <option value="false">false</option>
+                    </select>
+                  ) : value.type === 'jsonb' ? (
+                    <textarea
+                      {...f.register(`fields.${i}.defaultText`)}
+                      required
+                      aria-label="JSON default"
+                    />
+                  ) : (
+                    <input
+                      type={value.type === 'date' ? 'date' : 'text'}
+                      {...f.register(`fields.${i}.defaultText`)}
+                      required={!['text', 'varchar'].includes(value.type)}
+                    />
+                  )}
+                  <small>
+                    Bigint/decimal stay strings; JSONB accepts JSON; timestamps
+                    require timezone.
+                  </small>
+                </label>
+              )}
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => rows.remove(i)}
+              >
+                Remove field
+              </button>
+            </fieldset>
+          );
+        })}
+        <button
+          type="button"
+          className="secondary"
+          disabled={rows.fields.length >= 100 || action.busy}
+          onClick={() => rows.append(emptyField())}
+        >
+          Add field
+        </button>
+        <button disabled={action.busy}>
+          {table ? 'Save draft' : 'Create table draft'}
+        </button>
+      </form>
+      {table && (
+        <>
+          {savedRevision !== table.draftRevision && (
+            <p className="warning">
+              The saved server draft changed. Your edits are preserved; reload
+              and review before saving.
+            </p>
+          )}
+          {table.applyStatus && (
+            <p role="status">
+              Latest schema operation: {table.applyStatus.status}
+              {['applying', 'outcome_unknown'].includes(
+                table.applyStatus.status,
+              )
+                ? ' — operator review required; do not retry automatically'
+                : ''}
+              {table.applyStatus.errorCode
+                ? ` (${table.applyStatus.errorCode})`
+                : ''}
+            </p>
+          )}
+          <p>
+            Saved draft revision {table.draftRevision} · Applied revision{' '}
+            {table.appliedRevision ?? 'never'}
+          </p>
+          <p>
+            After apply, only new nullable fields without defaults or uniqueness
+            are supported.
+          </p>
+          <button
+            disabled={action.busy || f.formState.isDirty}
+            onClick={() =>
+              action.run(
+                () => api<typeof preview>(path + '/preview', 'POST'),
+                setPreview,
+                'SQL preview ready',
+              )
+            }
+          >
+            Preview SQL
+          </button>
+          {preview && (
+            <section>
+              <h2>
+                {table.appliedRevision === null
+                  ? 'Create table'
+                  : 'Add safe columns to'}{' '}
+                {table.name}
+              </h2>
+              <ul>
+                {table.fields
+                  .filter(
+                    (field) =>
+                      table.appliedRevision === null || !applied.has(field.id),
+                  )
+                  .map((field) => (
+                    <li key={field.id}>
+                      {field.name}: {field.type}
+                      {field.nullable ? '' : ', required'}
+                      {field.unique ? ', unique' : ''}
+                      {field.default
+                        ? `, default ${field.default.kind === 'current_timestamp' ? 'current timestamp' : JSON.stringify(field.default.value)}`
+                        : ''}
+                    </li>
+                  ))}
+              </ul>
+              <p>
+                Review this change before applying it to the connected database.
+              </p>
+              <h3>Generated SQL · revision {preview.draftRevision}</h3>
+              <pre>{preview.sql}</pre>
+              <button
+                disabled={
+                  action.busy ||
+                  f.formState.isDirty ||
+                  preview.draftRevision !== table.draftRevision
+                }
+                onClick={() => {
+                  if (confirm('Apply this schema to your connected database?'))
+                    void action.run(
+                      () =>
+                        api(path + '/apply', 'POST', {
+                          expectedDraftRevision: preview.draftRevision,
+                          planHash: preview.planHash,
+                        }),
+                      () => setPreview(null),
+                      'Schema applied',
+                    );
+                }}
+              >
+                Apply schema
+              </button>
+            </section>
+          )}
+          {table.appliedRevision === null && (
+            <button
+              className="secondary"
+              disabled={action.busy}
+              onClick={() => {
+                if (confirm('Delete this unapplied draft?'))
+                  void action.run(
+                    () => api(path, 'DELETE'),
+                    () =>
+                      window.location.assign(
+                        path
+                          .replace('schema/tables/', 'schema/')
+                          .split('/schema/')[0]
+                          .replace('projects/', '/projects/') + '/schema',
+                      ),
+                  );
+              }}
+            >
+              Delete unapplied draft
+            </button>
+          )}
+        </>
+      )}
+      <ActionState action={action} />
+    </>
+  );
+}

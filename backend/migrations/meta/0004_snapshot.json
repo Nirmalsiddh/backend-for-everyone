@@ -1,0 +1,1078 @@
+{
+  "id": "7c9c6e2d-8d14-4f13-9579-7b676010ccc0",
+  "prevId": "cb0b0fb1-29fa-4bbb-9f18-70a759923ca1",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.api_keys": {
+      "name": "api_keys",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_hash": {
+          "name": "key_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "key_prefix": {
+          "name": "key_prefix",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "scope": {
+          "name": "scope",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "revoked_at": {
+          "name": "revoked_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "api_keys_project_id_projects_id_fk": {
+          "name": "api_keys_project_id_projects_id_fk",
+          "tableFrom": "api_keys",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "api_keys_key_hash_unique": {
+          "name": "api_keys_key_hash_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "key_hash"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "api_keys_scope_valid": {
+          "name": "api_keys_scope_valid",
+          "value": "\"api_keys\".\"scope\" IN ('read', 'read_write')"
+        },
+        "api_keys_hash_valid": {
+          "name": "api_keys_hash_valid",
+          "value": "\"api_keys\".\"key_hash\" ~ '^[a-f0-9]{64}$'"
+        },
+        "api_keys_name_valid": {
+          "name": "api_keys_name_valid",
+          "value": "char_length(btrim(\"api_keys\".\"name\")) > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.database_connections": {
+      "name": "database_connections",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encrypted_config": {
+          "name": "encrypted_config",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encryption_iv": {
+          "name": "encryption_iv",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encryption_tag": {
+          "name": "encryption_tag",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "encryption_version": {
+          "name": "encryption_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_test_status": {
+          "name": "last_test_status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_tested_at": {
+          "name": "last_tested_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "database_connections_project_id_projects_id_fk": {
+          "name": "database_connections_project_id_projects_id_fk",
+          "tableFrom": "database_connections",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "database_connections_project_id_unique": {
+          "name": "database_connections_project_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "project_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "database_connections_test_status": {
+          "name": "database_connections_test_status",
+          "value": "\"database_connections\".\"last_test_status\" IN ('success', 'failed')"
+        },
+        "database_connections_encryption_version": {
+          "name": "database_connections_encryption_version",
+          "value": "\"database_connections\".\"encryption_version\" = 1"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.endpoints": {
+      "name": "endpoints",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "resource_name": {
+          "name": "resource_name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled_operations": {
+          "name": "enabled_operations",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "policies": {
+          "name": "policies",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "endpoints_project_resource_unique": {
+          "name": "endpoints_project_resource_unique",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "resource_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "endpoints_project_id_projects_id_fk": {
+          "name": "endpoints_project_id_projects_id_fk",
+          "tableFrom": "endpoints",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "endpoints_table_id_project_id_schema_tables_id_project_id_fk": {
+          "name": "endpoints_table_id_project_id_schema_tables_id_project_id_fk",
+          "tableFrom": "endpoints",
+          "tableTo": "schema_tables",
+          "columnsFrom": [
+            "table_id",
+            "project_id"
+          ],
+          "columnsTo": [
+            "id",
+            "project_id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "endpoints_table_id_unique": {
+          "name": "endpoints_table_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "table_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "endpoints_revision_valid": {
+          "name": "endpoints_revision_valid",
+          "value": "\"endpoints\".\"revision\" > 0"
+        },
+        "endpoints_operations_valid": {
+          "name": "endpoints_operations_valid",
+          "value": "jsonb_typeof(\"endpoints\".\"enabled_operations\") = 'array' AND \"endpoints\".\"enabled_operations\" <@ '[\"list\",\"get\",\"create\",\"update\",\"delete\"]'::jsonb"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.project_auth_configs": {
+      "name": "project_auth_configs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "signup_enabled": {
+          "name": "signup_enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provisioning_status": {
+          "name": "provisioning_status",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'unprovisioned'"
+        },
+        "auth_schema_version": {
+          "name": "auth_schema_version",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "auth_users_table_name": {
+          "name": "auth_users_table_name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "auth_sessions_table_name": {
+          "name": "auth_sessions_table_name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "session_lifetime_seconds": {
+          "name": "session_lifetime_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 86400
+        },
+        "catalog": {
+          "name": "catalog",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "revision": {
+          "name": "revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "project_auth_configs_project_id_projects_id_fk": {
+          "name": "project_auth_configs_project_id_projects_id_fk",
+          "tableFrom": "project_auth_configs",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "project_auth_configs_connection_id_database_connections_id_fk": {
+          "name": "project_auth_configs_connection_id_database_connections_id_fk",
+          "tableFrom": "project_auth_configs",
+          "tableTo": "database_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "project_auth_configs_project_id_unique": {
+          "name": "project_auth_configs_project_id_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "project_id"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "project_auth_status_valid": {
+          "name": "project_auth_status_valid",
+          "value": "\"project_auth_configs\".\"provisioning_status\" IN ('unprovisioned', 'provisioning', 'ready', 'failed', 'outcome_unknown')"
+        },
+        "project_auth_lifetime_valid": {
+          "name": "project_auth_lifetime_valid",
+          "value": "\"project_auth_configs\".\"session_lifetime_seconds\" BETWEEN 300 AND 604800"
+        },
+        "project_auth_revision_valid": {
+          "name": "project_auth_revision_valid",
+          "value": "\"project_auth_configs\".\"revision\" > 0 AND \"project_auth_configs\".\"auth_schema_version\" = 1"
+        },
+        "project_auth_names_valid": {
+          "name": "project_auth_names_valid",
+          "value": "\"project_auth_configs\".\"auth_users_table_name\" = 'platform_auth_users_' || replace(\"project_auth_configs\".\"project_id\"::text, '-', '') AND \"project_auth_configs\".\"auth_sessions_table_name\" = 'platform_auth_sessions_' || replace(\"project_auth_configs\".\"project_id\"::text, '-', '')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.projects": {
+      "name": "projects",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "owner_id": {
+          "name": "owner_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "slug": {
+          "name": "slug",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "projects_owner_id_users_id_fk": {
+          "name": "projects_owner_id_users_id_fk",
+          "tableFrom": "projects",
+          "tableTo": "users",
+          "columnsFrom": [
+            "owner_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "projects_slug_unique": {
+          "name": "projects_slug_unique",
+          "nullsNotDistinct": false,
+          "columns": [
+            "slug"
+          ]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "projects_name_valid": {
+          "name": "projects_name_valid",
+          "value": "char_length(btrim(\"projects\".\"name\")) > 0 AND \"projects\".\"name\" = btrim(\"projects\".\"name\")"
+        },
+        "projects_slug_valid": {
+          "name": "projects_slug_valid",
+          "value": "\"projects\".\"slug\" ~ '^[a-z][a-z0-9]*(-[a-z0-9]+)*$' AND char_length(\"projects\".\"slug\") >= 3"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.schema_fields": {
+      "name": "schema_fields",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "position": {
+          "name": "position",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type_options": {
+          "name": "type_options",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "nullable": {
+          "name": "nullable",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unique": {
+          "name": "unique",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "default_value": {
+          "name": "default_value",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "schema_fields_name_unique": {
+          "name": "schema_fields_name_unique",
+          "columns": [
+            {
+              "expression": "table_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "schema_fields_position_unique": {
+          "name": "schema_fields_position_unique",
+          "columns": [
+            {
+              "expression": "table_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "position",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "schema_fields_table_id_schema_tables_id_fk": {
+          "name": "schema_fields_table_id_schema_tables_id_fk",
+          "tableFrom": "schema_fields",
+          "tableTo": "schema_tables",
+          "columnsFrom": [
+            "table_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "schema_fields_position_valid": {
+          "name": "schema_fields_position_valid",
+          "value": "\"schema_fields\".\"position\" >= 0"
+        },
+        "schema_fields_name_valid": {
+          "name": "schema_fields_name_valid",
+          "value": "\"schema_fields\".\"name\" ~ '^[a-z][a-z0-9]*(_[a-z0-9]+)*$' AND \"schema_fields\".\"name\" <> 'id'"
+        },
+        "schema_fields_type_valid": {
+          "name": "schema_fields_type_valid",
+          "value": "\"schema_fields\".\"type\" IN ('text', 'varchar', 'integer', 'bigint', 'decimal', 'boolean', 'uuid', 'date', 'timestamp', 'jsonb')"
+        },
+        "schema_fields_default_valid": {
+          "name": "schema_fields_default_valid",
+          "value": "\"schema_fields\".\"default_value\" IS NULL OR (jsonb_typeof(\"schema_fields\".\"default_value\") = 'object' AND \"schema_fields\".\"default_value\"->>'kind' IN ('literal', 'current_timestamp'))"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.schema_migrations": {
+      "name": "schema_migrations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "table_id": {
+          "name": "table_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "draft_revision": {
+          "name": "draft_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "plan_hash": {
+          "name": "plan_hash",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "definition": {
+          "name": "definition",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(24)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "schema_migrations_one_active_project": {
+          "name": "schema_migrations_one_active_project",
+          "columns": [
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"schema_migrations\".\"status\" IN ('applying', 'outcome_unknown')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "schema_migrations_project_id_projects_id_fk": {
+          "name": "schema_migrations_project_id_projects_id_fk",
+          "tableFrom": "schema_migrations",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "schema_migrations_table_id_schema_tables_id_fk": {
+          "name": "schema_migrations_table_id_schema_tables_id_fk",
+          "tableFrom": "schema_migrations",
+          "tableTo": "schema_tables",
+          "columnsFrom": [
+            "table_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "schema_migrations_status_valid": {
+          "name": "schema_migrations_status_valid",
+          "value": "\"schema_migrations\".\"status\" IN ('applying', 'applied', 'failed', 'outcome_unknown')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.schema_tables": {
+      "name": "schema_tables",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "connection_id": {
+          "name": "connection_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "schema_name": {
+          "name": "schema_name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(63)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "draft_revision": {
+          "name": "draft_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
+        "applied_revision": {
+          "name": "applied_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "applied_definition": {
+          "name": "applied_definition",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "schema_tables_id_project_unique": {
+          "name": "schema_tables_id_project_unique",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "project_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "schema_tables_target_unique": {
+          "name": "schema_tables_target_unique",
+          "columns": [
+            {
+              "expression": "connection_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "schema_name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "schema_tables_project_id_projects_id_fk": {
+          "name": "schema_tables_project_id_projects_id_fk",
+          "tableFrom": "schema_tables",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "schema_tables_connection_id_database_connections_id_fk": {
+          "name": "schema_tables_connection_id_database_connections_id_fk",
+          "tableFrom": "schema_tables",
+          "tableTo": "database_connections",
+          "columnsFrom": [
+            "connection_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "schema_tables_name_valid": {
+          "name": "schema_tables_name_valid",
+          "value": "\"schema_tables\".\"name\" ~ '^[a-z][a-z0-9]*(_[a-z0-9]+)*$'"
+        },
+        "schema_tables_revisions_valid": {
+          "name": "schema_tables_revisions_valid",
+          "value": "\"schema_tables\".\"draft_revision\" > 0 AND (\"schema_tables\".\"applied_revision\" IS NULL OR (\"schema_tables\".\"applied_revision\" > 0 AND \"schema_tables\".\"applied_revision\" <= \"schema_tables\".\"draft_revision\"))"
+        },
+        "schema_tables_applied_pair": {
+          "name": "schema_tables_applied_pair",
+          "value": "(\"schema_tables\".\"applied_revision\" IS NULL) = (\"schema_tables\".\"applied_definition\" IS NULL)"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.users": {
+      "name": "users",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "email": {
+          "name": "email",
+          "type": "varchar(254)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "users_email_unique": {
+          "name": "users_email_unique",
+          "columns": [
+            {
+              "expression": "lower(\"email\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
