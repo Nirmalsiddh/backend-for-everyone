@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from './platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -14,7 +15,7 @@ test('fixed POST route dispatches published workflows, validates input and keeps
     tables: [], blocked: false, connection: { id: connectionId, projectId, label: 'Fixture', ...new CredentialEncryption(env.connectionEncryptionKey).encrypt({ schema: 'public' }, `${projectId}:${connectionId}`), lastTestStatus: 'success', lastTestedAt: now, createdAt: now, updatedAt: now } };
   const repository: WorkflowRepository = { create: fail, get: fail, list: fail, edit: fail, toggle: fail, tables: fail, publish: fail, async resolve(_project, path) { return path === 'echo' && endpoint.enabled ? target : undefined; } };
   const logs: unknown[] = [];
-  const app = buildApp({ env, projectRepository: memoryRepository(), logger: false, workflowRepository: repository,
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: memoryRepository(), logger: false, workflowRepository: repository,
     runtimeRepository: { async authenticate() { return { projectId, keyId: 'safe-id', scope: 'read_write' }; }, async resolve() { return undefined; } },
     transactionRunner: async (_config, work) => work({ async connect() {}, async end() {}, on() {}, async query() { return { rows: [] }; } }),
   });

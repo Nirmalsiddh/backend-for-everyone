@@ -181,8 +181,8 @@ export default function AuthPage() {
     <>
       <h1>Project authentication</h1>
       <p>
-        Application-user authentication is separate from dashboard operator
-        access. This MVP has no email verification or password reset.
+        Application-user authentication is separate from platform-user
+        dashboard access. This MVP has no email verification or password reset.
       </p>
       <button className="secondary" onClick={() => void q.refetch()}>
         Refresh status (keep edits)

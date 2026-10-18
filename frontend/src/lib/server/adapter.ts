@@ -1,3 +1,4 @@
+import { allowedRequest, backendOrigin, requestToken } from './auth-config';
 import { operationFor } from './operations';
 import { randomUUID } from 'node:crypto';
 import { pick } from './dto';
@@ -9,18 +10,6 @@ export function managementDto(path: string, method: string, data: unknown) {
   const op = operationFor(path, method);
   if (!op) throw new Error('Unsupported operation');
   return op.project(data, method);
-}
-function sameOrigin(request: Request, url: URL) {
-  try {
-    const origin = new URL(request.headers.get('origin') ?? '');
-    return (
-      origin.origin === request.headers.get('origin') &&
-      origin.host === (request.headers.get('host') ?? url.host) &&
-      origin.protocol === url.protocol
-    );
-  } catch {
-    return false;
-  }
 }
 export async function adapter(
   request: Request,
@@ -38,39 +27,12 @@ export async function adapter(
   if (!supported(path, request.method, runtime))
     return fail(404, 'NOT_FOUND', 'Unsupported dashboard operation');
   const url = new URL(request.url);
-  const host = request.headers.get('host') ?? url.host;
-  const allowed = (
-    process.env.DASHBOARD_ALLOWED_HOSTS ??
-    '127.0.0.1:3001,localhost:3001,127.0.0.1:3011,localhost:3011,localhost'
-  )
-    .split(',')
-    .map((v) => v.trim());
-  if (!allowed.includes(host))
-    return fail(403, 'HOST_REJECTED', 'Dashboard host is not permitted');
-  if (
-    request.method !== 'GET' &&
-    (!sameOrigin(request, url) ||
-      request.headers.get('sec-fetch-site') === 'cross-site')
-  )
-    return fail(403, 'ORIGIN_REJECTED', 'Same-origin request required');
   let origin: string;
   try {
-    origin = process.env.BACKEND_ORIGIN ?? '';
-    const target = new URL(origin);
-    if (
-      target.origin !== origin ||
-      target.username ||
-      target.password ||
-      !['http:', 'https:'].includes(target.protocol) ||
-      (!runtime && !process.env.MANAGEMENT_API_TOKEN)
-    )
-      throw new Error();
+    if (!allowedRequest(request)) return fail(403, 'ORIGIN_REJECTED', 'Same-origin request required');
+    origin = backendOrigin();
   } catch {
-    return fail(
-      503,
-      'DASHBOARD_CONFIGURATION_INVALID',
-      'Dashboard server configuration is invalid; contact the operator',
-    );
+    return fail(503, 'DASHBOARD_CONFIGURATION_INVALID', 'Dashboard server configuration is invalid');
   }
   let phase: 'transport' | 'contract' = 'transport';
   try {
@@ -87,8 +49,8 @@ export async function adapter(
       const credential = request.headers.get('authorization');
       if (credential) upstreamHeaders.set('authorization', credential);
     } else {
-      const token = process.env.MANAGEMENT_API_TOKEN;
-      if (!token) throw new Error('Missing token');
+      const token = requestToken(request);
+      if (!token) return fail(401, 'UNAUTHORIZED', 'Sign in required');
       upstreamHeaders.set('authorization', `Bearer ${token}`);
     }
     const query = url.searchParams;
@@ -106,7 +68,7 @@ export async function adapter(
         return fail(413, 'INVALID_REQUEST', 'Request is too large');
       if (body) {
         if (
-          !request.headers.get('content-type')?.startsWith('application/json')
+          request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json'
         )
           return fail(400, 'INVALID_REQUEST', 'JSON required');
         upstreamHeaders.set('content-type', 'application/json');

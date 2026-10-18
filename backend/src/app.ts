@@ -52,10 +52,15 @@ import type {
 } from './modules/database-connections/types.js';
 import { CredentialEncryption } from './security/encryption.js';
 import { createConnectionTester } from './database/customer-db/connection-test.js';
-import { managementAuth } from './security/management-auth.js';
+import { PlatformAuthService } from './modules/platform-auth/service.js';
+import { platformAuthRoutes } from './modules/platform-auth/routes.js';
+import { platformSessionAuth } from './modules/platform-auth/session.js';
+import { PlatformAuthError, type PlatformAuthRepository } from './modules/platform-auth/types.js';
+import { createPasswordHasher as createSharedPasswordHasher } from './security/passwords.js';
 
 export function buildApp(options: {
   env: Env;
+  platformAuthRepository: PlatformAuthRepository;
   projectRepository: ProjectRepository;
   logger?: boolean;
   connectionRepository?: ConnectionRepository;
@@ -74,6 +79,7 @@ export function buildApp(options: {
   authRateLimiter?: AuthRateLimiter;
 }) {
   const app = Fastify({
+    trustProxy: options.env.trustedDashboardProxy || false,
     logger:
       options.logger === false
         ? false
@@ -89,7 +95,7 @@ export function buildApp(options: {
                 stack: '',
               }),
             },
-            redact: ['req.headers.authorization', 'req.headers.cookie'],
+            redact: ['req.headers.authorization', 'req.headers.cookie', 'res.headers.set-cookie'],
           },
     logController: new LogController({ disableRequestLogging: true }),
     bodyLimit: 64 * 1024,
@@ -109,12 +115,13 @@ export function buildApp(options: {
 
   app.setErrorHandler<FastifyError>((error, request, reply) => {
     if (
+      error instanceof PlatformAuthError ||
       error instanceof ProjectError ||
       error instanceof ConnectionError ||
       error instanceof SchemaError ||
       error instanceof RuntimeError
     ) {
-      if (error instanceof AuthRateLimitError)
+      if (error instanceof AuthRateLimitError || (error instanceof PlatformAuthError && error.retryAfter))
         reply.header('retry-after', String(error.retryAfter));
       if (error.statusCode === 401) reply.header('www-authenticate', 'Bearer');
       return reply
@@ -167,40 +174,42 @@ export function buildApp(options: {
         options.authRateLimiter ?? new AuthRateLimiter(),
       )
     : undefined;
+  const platformAuth = new PlatformAuthService(options.platformAuthRepository, createSharedPasswordHasher());
+  app.decorateRequest('platformPrincipal');
+  app.decorateRequest('platformUser');
+  app.register(platformAuthRoutes, { prefix: '/internal', service: platformAuth });
+  const cleanup = setInterval(() => { void platformAuth.cleanup().catch(() => app.log.warn('Platform session cleanup failed')); }, 60 * 60 * 1000);
+  cleanup.unref();
+  app.addHook('onClose', async () => { clearInterval(cleanup); });
   const projects = new ProjectService(options.projectRepository);
   app.register(
     async (internal) => {
+      internal.addHook('onRequest', async (_request, reply) => { reply.header('Cache-Control', 'no-store'); });
       internal.addHook(
         'onRequest',
-        managementAuth(options.env.managementToken),
+        platformSessionAuth(platformAuth),
       );
       if (options.workflowRepository)
         await internal.register(workflowRoutes, {
           service: new WorkflowService(options.workflowRepository),
-          ownerId: options.env.managementUserId,
         });
       if (authService)
         await internal.register(projectAuthRoutes, {
           service: authService,
-          ownerId: options.env.managementUserId,
         });
       if (options.endpointRepository)
         await internal.register(endpointRoutes, {
           service: new EndpointService(options.endpointRepository),
-          ownerId: options.env.managementUserId,
         });
       if (options.apiKeyRepository)
         await internal.register(apiKeyRoutes, {
           service: new ApiKeyService(options.apiKeyRepository),
-          ownerId: options.env.managementUserId,
         });
       await internal.register(projectRoutes, {
         service: projects,
-        ownerId: options.env.managementUserId,
       });
       if (options.schemaRepository && options.connectionRepository) {
         await internal.register(schemaRoutes, {
-          ownerId: options.env.managementUserId,
           service: new SchemaService(
             options.schemaRepository,
             options.connectionRepository,
@@ -217,7 +226,6 @@ export function buildApp(options: {
             new CredentialEncryption(options.env.connectionEncryptionKey),
             options.connectionTester ?? createConnectionTester(),
           ),
-          ownerId: options.env.managementUserId,
         });
       }
     },

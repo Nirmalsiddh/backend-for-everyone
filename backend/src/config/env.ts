@@ -3,8 +3,7 @@ export interface Env {
   host: string;
   port: number;
   databaseUrl: string;
-  managementToken: string;
-  managementUserId: string;
+  trustedDashboardProxy: string;
   connectionEncryptionKey: string;
   runtimeAllowedOrigins: string[];
 }
@@ -35,14 +34,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   }
   const host = source.HOST ?? '127.0.0.1';
   if (!host.trim()) throw new Error('HOST must not be blank');
-  const managementToken = source.MANAGEMENT_API_TOKEN ?? '';
-  if (!/^[A-Za-z0-9_-]{32,256}$/.test(managementToken) || managementToken.startsWith('replace-')) {
-    throw new Error('MANAGEMENT_API_TOKEN must be a random 32–256 character URL-safe token');
-  }
-  const managementUserId = source.MANAGEMENT_USER_ID ?? '';
-  if (!new RegExp(uuidPattern).test(managementUserId)) {
-    throw new Error('MANAGEMENT_USER_ID must be a UUID');
-  }
+  const trustedDashboardProxy = source.TRUSTED_DASHBOARD_PROXY ?? '';
+  if (trustedDashboardProxy && !['127.0.0.1', '::1'].includes(trustedDashboardProxy)) throw new Error('TRUSTED_DASHBOARD_PROXY must be an explicit loopback IP');
   const connectionEncryptionKey = source.CONNECTION_ENCRYPTION_KEY ?? '';
   if (!/^[a-fA-F0-9]{64}$/.test(connectionEncryptionKey)) {
     throw new Error('CONNECTION_ENCRYPTION_KEY must be a 32-byte hex key');
@@ -59,6 +52,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     connectionEncryptionKey,
     nodeEnv: nodeEnv as Env['nodeEnv'], host, port,
     databaseUrl: parseDatabaseUrl(source.PLATFORM_DATABASE_URL, 'PLATFORM_DATABASE_URL'),
-    managementToken, managementUserId,
+    trustedDashboardProxy,
   };
 }

@@ -6,6 +6,9 @@ import {
   tableDto,
   managementDto,
 } from '../src/lib/server/adapter';
+process.env.DASHBOARD_ORIGIN = 'http://localhost';
+process.env.DASHBOARD_COOKIE_MODE = 'local-http';
+const platformToken = 'ps_' + 'a'.repeat(43);
 const id = '11111111-1111-4111-8111-111111111111';
 test('adapter rejects arbitrary targets, unlisted methods, traversal, and cross-origin mutations', async () => {
   for (const path of [
@@ -63,19 +66,15 @@ test('explicit management DTOs exclude internal records and preserve only intent
     [{ id }],
   );
 });
-test('only management calls receive the operator token; runtime forwards explicit runtime credential and request ID', async (t) => {
+test('only management calls receive the platform session; runtime forwards explicit runtime credential and request ID', async (t) => {
   const original = globalThis.fetch;
   const oldOrigin = process.env.BACKEND_ORIGIN;
-  const oldToken = process.env.MANAGEMENT_API_TOKEN;
   t.after(() => {
     globalThis.fetch = original;
     if (oldOrigin === undefined) delete process.env.BACKEND_ORIGIN;
     else process.env.BACKEND_ORIGIN = oldOrigin;
-    if (oldToken === undefined) delete process.env.MANAGEMENT_API_TOKEN;
-    else process.env.MANAGEMENT_API_TOKEN = oldToken;
   });
   process.env.BACKEND_ORIGIN = 'http://127.0.0.1:3000';
-  process.env.MANAGEMENT_API_TOKEN = 'operator-secret';
   let sent = '';
   globalThis.fetch = async (_url, init) => {
     sent = new Headers(init?.headers).get('authorization') ?? '';
@@ -85,22 +84,22 @@ test('only management calls receive the operator token; runtime forwards explici
     );
   };
   const response = await adapter(
-    new Request('http://localhost/api/management/projects'),
+    new Request('http://localhost/api/management/projects', { headers: { cookie: `platform_session=${platformToken}` } }),
     ['projects'],
   );
-  assert.equal(sent, 'Bearer operator-secret');
+  assert.equal(sent, `Bearer ${platformToken}`);
   assert.equal(response.headers.get('x-request-id'), 'backend-id');
   assert.equal(response.headers.get('cache-control'), 'no-store');
   await adapter(
     new Request('http://localhost/api/runtime/shop/products', {
-      headers: { authorization: 'Bearer pk_runtime' },
+      headers: { authorization: 'Bearer pk_runtime', cookie: `platform_session=${platformToken}` },
     }),
     ['shop', 'products'],
     true,
   );
   assert.equal(sent, 'Bearer pk_runtime');
   await adapter(
-    new Request('http://localhost/api/runtime/shop/products'),
+    new Request('http://localhost/api/runtime/shop/products', { headers: { cookie: `platform_session=${platformToken}` } }),
     ['shop', 'products'],
     true,
   );
@@ -110,16 +109,12 @@ test('only management calls receive the operator token; runtime forwards explici
 test('normalized Next URL still accepts matching incoming Origin/Host and preserves sanitized backend errors', async (t) => {
   const original = globalThis.fetch;
   const oldOrigin = process.env.BACKEND_ORIGIN;
-  const oldToken = process.env.MANAGEMENT_API_TOKEN;
   t.after(() => {
     globalThis.fetch = original;
     if (oldOrigin === undefined) delete process.env.BACKEND_ORIGIN;
     else process.env.BACKEND_ORIGIN = oldOrigin;
-    if (oldToken === undefined) delete process.env.MANAGEMENT_API_TOKEN;
-    else process.env.MANAGEMENT_API_TOKEN = oldToken;
   });
   process.env.BACKEND_ORIGIN = 'http://127.0.0.1:3000';
-  process.env.MANAGEMENT_API_TOKEN = 'operator';
   globalThis.fetch = async () =>
     Response.json(
       {
@@ -134,8 +129,9 @@ test('normalized Next URL still accepts matching incoming Origin/Host and preser
     new Request('http://localhost:3001/api/management/projects', {
       method: 'POST',
       headers: {
-        host: '127.0.0.1:3001',
-        origin: 'http://127.0.0.1:3001',
+        host: 'localhost',
+        cookie: `platform_session=${platformToken}`,
+        origin: 'http://localhost',
         'content-type': 'application/json',
       },
       body: '{malformed',
@@ -199,7 +195,7 @@ test('runtime responses preserve business JSON, sanitized errors and empty bodie
       headers: { 'x-request-id': 'empty-id' },
     });
   const empty = await adapter(
-    new Request('http://localhost/api/runtime/shop/products'),
+    new Request('http://localhost/api/runtime/shop/products', { headers: { cookie: `platform_session=${platformToken}` } }),
     ['shop', 'products'],
     true,
   );
@@ -211,17 +207,13 @@ test('runtime responses preserve business JSON, sanitized errors and empty bodie
 test('adapter distinguishes invalid configuration, transport and contract failures', async (t) => {
   const oldFetch = globalThis.fetch;
   const oldOrigin = process.env.BACKEND_ORIGIN;
-  const oldToken = process.env.MANAGEMENT_API_TOKEN;
   t.after(() => {
     globalThis.fetch = oldFetch;
     if (oldOrigin === undefined) delete process.env.BACKEND_ORIGIN;
     else process.env.BACKEND_ORIGIN = oldOrigin;
-    if (oldToken === undefined) delete process.env.MANAGEMENT_API_TOKEN;
-    else process.env.MANAGEMENT_API_TOKEN = oldToken;
   });
-  process.env.MANAGEMENT_API_TOKEN = 'operator';
   process.env.BACKEND_ORIGIN = 'https://user:secret@bad.test';
-  const req = () => new Request('http://localhost/api/management/projects');
+  const req = () => new Request('http://localhost/api/management/projects', { headers: { cookie: `platform_session=${platformToken}` } });
   assert.equal(
     (await (await adapter(req(), ['projects'])).json()).code,
     'DASHBOARD_CONFIGURATION_INVALID',

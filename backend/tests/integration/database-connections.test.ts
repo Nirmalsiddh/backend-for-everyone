@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -35,7 +36,7 @@ test('real PostgreSQL customer connection lifecycle and failed credential replac
   const project = await projectRepository.create(ownerId, { name: 'Connection test', slug: `connection-${randomUUID()}` });
   projectId = project.id;
   const repository = new PostgresConnectionRepository(db);
-  const app = buildApp({ env: { ...env, managementUserId: ownerId }, projectRepository,
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository(ownerId), env, projectRepository,
     connectionRepository: repository, logger: false });
   t.after(() => app.close());
   const path = `/internal/projects/${project.id}/database-connection`;

@@ -1,0 +1,33 @@
+import { test, expect } from '@playwright/test';
+import { signupLogin, login } from './platform-account';
+test('two platform accounts, opaque HttpOnly sessions, reload, ownership and revocation', async ({ page, browser }) => {
+  await page.goto('/projects'); await expect(page).toHaveURL(/\/login$/);
+  const responses: string[] = [];
+  page.on('response', async (r) => { if (r.url().includes('/api/auth/')) responses.push(await r.text().catch(() => '')); });
+  const email = await signupLogin(page);
+  await expect(page.getByText(email, { exact: true })).toBeVisible();
+  const cookie = (await page.context().cookies()).find((c) => c.name === 'platform_session')!;
+  expect(cookie.httpOnly).toBe(true); expect(cookie.sameSite).toBe('Lax'); expect(cookie.path).toBe('/');
+  await page.getByLabel('Name', { exact: true }).fill('Private platform project');
+  await page.getByLabel('Slug', { exact: true }).fill('private-' + crypto.randomUUID().slice(0, 8));
+  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await expect(page).toHaveURL(/projects\/[a-f0-9-]{36}$/);
+  const projectUrl = new URL(page.url()).pathname;
+  await page.reload(); await expect(page.getByText(email, { exact: true })).toBeVisible();
+  expect(await page.evaluate(() => document.cookie)).not.toContain(cookie.value);
+  expect(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).not.toContain(cookie.value);
+  expect(responses.join('')).not.toContain(cookie.value);
+  const other = await browser.newContext(); const b = await other.newPage();
+  await signupLogin(b);
+  await b.goto(projectUrl); await expect(b.getByRole('alert').filter({ hasText: 'PROJECT_NOT_FOUND' })).toContainText(/not found|unavailable/i);
+  const denied = await other.request.get('/api/management/' + projectUrl.slice(1)); expect(denied.status()).toBe(404);
+  await b.getByRole('button', { name: 'Log out', exact: true }).click(); await expect(b).toHaveURL(/\/login$/);
+  await other.close();
+  await page.getByRole('button', { name: 'Log out', exact: true }).click(); await expect(page).toHaveURL(/\/login$/);
+  await login(page, email); await page.goto(projectUrl); await expect(page.getByText(email, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Log out', exact: true }).click(); await expect(page).toHaveURL(/\/login$/);
+  await page.goto('/projects'); await expect(page).toHaveURL(/\/login$/);
+  // The original cookie cannot be replayed after logout.
+  const revoked = await page.request.get('/api/management/projects', { headers: { cookie: `platform_session=${cookie.value}` } });
+  expect(revoked.status()).toBe(401);
+});

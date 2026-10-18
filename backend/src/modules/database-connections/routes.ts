@@ -85,7 +85,7 @@ const metadata = {
 
 export async function connectionRoutes(
   app: FastifyInstance,
-  options: { service: ConnectionService; ownerId: string },
+  options: { service: ConnectionService },
 ) {
   const path = '/projects/:projectId/database-connection';
   type Request = { Params: { projectId: string }; Body: ConnectionInput };
@@ -95,7 +95,7 @@ export async function connectionRoutes(
     async (request, reply) => {
       const record = await options.service.save(
         request.params.projectId,
-        options.ownerId,
+        request.platformPrincipal.userId,
         request.body,
         false,
       );
@@ -114,7 +114,7 @@ export async function connectionRoutes(
     (request) =>
       options.service.save(
         request.params.projectId,
-        options.ownerId,
+        request.platformPrincipal.userId,
         request.body,
         true,
       ),
@@ -122,7 +122,7 @@ export async function connectionRoutes(
   app.get<Request>(
     path,
     { schema: { params, response: { 200: metadata } } },
-    (request) => options.service.get(request.params.projectId, options.ownerId),
+    (request) => options.service.get(request.params.projectId, request.platformPrincipal.userId),
   );
   app.post<Request>(
     `${path}/test`,
@@ -138,10 +138,10 @@ export async function connectionRoutes(
       },
     },
     (request) =>
-      options.service.test(request.params.projectId, options.ownerId),
+      options.service.test(request.params.projectId, request.platformPrincipal.userId),
   );
   app.delete<Request>(path, { schema: { params } }, async (request, reply) => {
-    await options.service.delete(request.params.projectId, options.ownerId);
+    await options.service.delete(request.params.projectId, request.platformPrincipal.userId);
     return reply.code(204).send();
   });
 }

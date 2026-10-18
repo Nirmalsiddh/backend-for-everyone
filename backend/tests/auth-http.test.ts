@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from './platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -19,7 +20,7 @@ test('auth HTTP routes limit attempts before hashing and never log credentials o
     async provision() {}, async signup() { return user; }, async findUser() { return undefined; }, async login() {},
     async session() { return { user, sessionId: randomUUID() }; }, async logout() {}, async setRole() { return user; },
   };
-  const app = buildApp({ env, projectRepository: memoryRepository(), logger: false, authRepository: repository, authStore: store,
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: memoryRepository(), logger: false, authRepository: repository, authStore: store,
     passwordHasher: { ...realHasher, async hash(password) { hashes++; return realHasher.hash(password); } }, authRateLimiter: new AuthRateLimiter(60000, 2, 2),
     runtimeRepository: { async authenticate() { return undefined; }, async resolve() { return undefined; } } });
   const logs: unknown[] = []; app.addHook('onRequest', async (req) => { req.log.info = (...args: unknown[]) => { logs.push(args); }; });

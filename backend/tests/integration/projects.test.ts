@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -48,7 +49,7 @@ test('PostgreSQL migrations, persistence, ownership, constraints, and conflict m
   seeded = true;
   const repository = new PostgresProjectRepository(db);
   const app = buildApp({
-    env: { ...env, managementUserId: ownerId },
+    platformAuthRepository: memoryPlatformAuthRepository(ownerId), env,
     projectRepository: repository,
     logger: false,
   });
@@ -64,7 +65,7 @@ test('PostgreSQL migrations, persistence, ownership, constraints, and conflict m
   const saved = await repository.findOwnedById(created.json().id, ownerId);
   assert.equal(saved?.slug, payload.slug);
   const secondApp = buildApp({
-    env: { ...env, managementUserId: ownerId },
+    platformAuthRepository: memoryPlatformAuthRepository(ownerId), env,
     projectRepository: new PostgresProjectRepository(db),
     logger: false,
   });

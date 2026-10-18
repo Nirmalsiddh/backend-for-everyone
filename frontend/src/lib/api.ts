@@ -21,6 +21,7 @@ export async function api<T>(
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = response.status === 204 ? undefined : await response.json();
+  if (response.status === 401 && typeof window !== 'undefined') window.location.assign('/login');
   if (!response.ok)
     throw new ApiError(
       response.status,

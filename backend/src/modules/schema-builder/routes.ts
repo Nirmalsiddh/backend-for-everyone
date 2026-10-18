@@ -62,7 +62,7 @@ const draftProperties = {
 const revision = { type: 'integer', minimum: 1, maximum: 2147483646 } as const;
 export async function schemaRoutes(
   app: FastifyInstance,
-  options: { service: SchemaService; ownerId: string },
+  options: { service: SchemaService },
 ) {
   const base = '/projects/:projectId/schema';
   const tablePath = `${base}/tables/:tableId`;
@@ -84,11 +84,10 @@ export async function schemaRoutes(
       );
   };
   type Params = { projectId: string; tableId: string };
-  const owner = options.ownerId;
   app.get<{ Params: Params }>(
     base,
     { schema: { params: params(false) } },
-    (req) => options.service.list(req.params.projectId, owner),
+    (req) => options.service.list(req.params.projectId, req.platformPrincipal.userId),
   );
   app.post<{ Params: Params; Body: DraftInput }>(
     `${base}/tables`,
@@ -106,7 +105,7 @@ export async function schemaRoutes(
     async (req, reply) => {
       const table = await options.service.create(
         req.params.projectId,
-        owner,
+        req.platformPrincipal.userId,
         req.body,
       );
       return reply
@@ -122,7 +121,7 @@ export async function schemaRoutes(
     tablePath,
     { schema: { params: params(true) } },
     (req) =>
-      options.service.get(req.params.projectId, owner, req.params.tableId),
+      options.service.get(req.params.projectId, req.platformPrincipal.userId, req.params.tableId),
   );
   app.put<{
     Params: Params;
@@ -144,7 +143,7 @@ export async function schemaRoutes(
       const { expectedDraftRevision, ...draft } = req.body;
       return options.service.update(
         req.params.projectId,
-        owner,
+        req.platformPrincipal.userId,
         req.params.tableId,
         expectedDraftRevision,
         draft,
@@ -157,7 +156,7 @@ export async function schemaRoutes(
     async (req, reply) => {
       await options.service.delete(
         req.params.projectId,
-        owner,
+        req.platformPrincipal.userId,
         req.params.tableId,
       );
       return reply.code(204).send();
@@ -167,7 +166,7 @@ export async function schemaRoutes(
     `${tablePath}/preview`,
     { schema: { params: params(true) }, preValidation: noBody },
     (req) =>
-      options.service.preview(req.params.projectId, owner, req.params.tableId),
+      options.service.preview(req.params.projectId, req.platformPrincipal.userId, req.params.tableId),
   );
   app.post<{
     Params: Params;
@@ -191,7 +190,7 @@ export async function schemaRoutes(
     (req) =>
       options.service.apply(
         req.params.projectId,
-        owner,
+        req.platformPrincipal.userId,
         req.params.tableId,
         req.body.expectedDraftRevision,
         req.body.planHash,

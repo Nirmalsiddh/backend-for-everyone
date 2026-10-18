@@ -5,14 +5,32 @@ import type { Operation } from '../../modules/endpoints/types.js';
 import type { KeyScope } from '../../modules/api-keys/types.js';
 import type { AppliedDefinition, Definition, FieldDefault, FieldType, MigrationStatus } from '../../modules/schema-builder/types.js';
 import { sql } from 'drizzle-orm';
-import { boolean as booleanColumn, check, foreignKey, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
+import { boolean as booleanColumn, check, foreignKey, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid, varchar } from 'drizzle-orm/pg-core';
 
 export const users = pgTable('users', {
   id: uuid('id').primaryKey().defaultRandom(),
   email: varchar('email', { length: 254 }).notNull(),
+  passwordHash: text('password_hash'),
+  status: varchar('status', { length: 16 }).notNull().default('disabled'),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
   createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
 }, (table) => [
+  check('users_status_valid', sql`${table.status} IN ('active', 'disabled')`),
   uniqueIndex('users_email_unique').on(sql`lower(${table.email})`),
+]);
+
+export const platformSessions = pgTable('platform_sessions', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  expiresAt: timestamp('expires_at', { withTimezone: true, mode: 'date' }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true, mode: 'date' }),
+}, (table) => [
+  uniqueIndex('platform_sessions_token_hash_unique').on(table.tokenHash),
+  index('platform_sessions_user_id_idx').on(table.userId),
+  index('platform_sessions_expires_at_idx').on(table.expiresAt),
+  check('platform_sessions_expiry_valid', sql`${table.expiresAt} > ${table.createdAt}`),
 ]);
 
 export const projects = pgTable('projects', {

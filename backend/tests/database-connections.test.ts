@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from './platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { buildApp } from '../src/app.js';
@@ -13,7 +14,7 @@ async function setup() {
   const connections = memoryConnectionRepository(projects);
   let calls = 0;
   let failure = false;
-  const app = buildApp({ env, projectRepository: projects, connectionRepository: connections, logger: false,
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: projects, connectionRepository: connections, logger: false,
     connectionTester: async () => { calls++; if (failure) throw connectionTestError('AUTHENTICATION_FAILED'); },
   });
   return { app, connections, project, foreign, path: `/internal/projects/${project.id}/database-connection`,

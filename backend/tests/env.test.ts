@@ -1,12 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { loadEnv } from '../src/config/env.js';
-import { ownerId, token } from './helpers.js';
 
 const valid = {
   PLATFORM_DATABASE_URL: 'postgresql://test:secret@localhost/platform',
   CONNECTION_ENCRYPTION_KEY: '11'.repeat(32),
-  MANAGEMENT_USER_ID: ownerId, MANAGEMENT_API_TOKEN: token,
 };
 
 test('environment defaults and explicit configuration', () => {
@@ -20,7 +18,7 @@ test('reject invalid environment without echoing secrets', () => {
   for (const patch of [
     { PLATFORM_DATABASE_URL: 'https://secret.example/db' },
     { PLATFORM_DATABASE_URL: 'postgresql://localhost/' },
-    { MANAGEMENT_USER_ID: 'bad' }, { MANAGEMENT_API_TOKEN: 'short' },
+    { TRUSTED_DASHBOARD_PROXY: '0.0.0.0/0' },
     { PORT: '0' }, { PORT: '65536' }, { PORT: '1.5' }, { PORT: '' },
     { CONNECTION_ENCRYPTION_KEY: '' }, { CONNECTION_ENCRYPTION_KEY: 'zz'.repeat(32) },
     { NODE_ENV: 'invalid' }, { HOST: ' ' },

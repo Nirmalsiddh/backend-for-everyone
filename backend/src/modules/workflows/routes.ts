@@ -5,7 +5,7 @@ import type { WorkflowDefinition } from './types.js';
 import type { WorkflowService } from './service.js';
 export async function workflowRoutes(
   app: FastifyInstance,
-  options: { service: WorkflowService; ownerId: string },
+  options: { service: WorkflowService },
 ) {
   const path = '/projects/:projectId/workflows';
   const item = `${path}/:workflowId`;
@@ -46,7 +46,7 @@ export async function workflowRoutes(
         .send(
           await options.service.create(
             req.params.projectId,
-            options.ownerId,
+            req.platformPrincipal.userId,
             req.body.path,
             req.body.definition,
           ),
@@ -55,7 +55,7 @@ export async function workflowRoutes(
   app.get<{ Params: Params }>(
     path,
     { schema: { params: params(false) } },
-    (req) => options.service.list(req.params.projectId, options.ownerId),
+    (req) => options.service.list(req.params.projectId, req.platformPrincipal.userId),
   );
   app.get<{ Params: Params }>(
     item,
@@ -63,7 +63,7 @@ export async function workflowRoutes(
     (req) =>
       options.service.get(
         req.params.projectId,
-        options.ownerId,
+        req.platformPrincipal.userId,
         req.params.workflowId,
       ),
   );
@@ -84,7 +84,7 @@ export async function workflowRoutes(
     (req) =>
       options.service.edit(
         req.params.projectId,
-        options.ownerId,
+        req.platformPrincipal.userId,
         req.params.workflowId,
         req.body.expectedDraftRevision,
         req.body.definition,
@@ -102,7 +102,7 @@ export async function workflowRoutes(
     (req) =>
       options.service.preview(
         req.params.projectId,
-        options.ownerId,
+        req.platformPrincipal.userId,
         req.params.workflowId,
       ),
   );
@@ -123,7 +123,7 @@ export async function workflowRoutes(
     (req) =>
       options.service.publish(
         req.params.projectId,
-        options.ownerId,
+        req.platformPrincipal.userId,
         req.params.workflowId,
         req.body.expectedDraftRevision,
         req.body.definitionHash,
@@ -146,7 +146,7 @@ export async function workflowRoutes(
     (req) =>
       options.service.toggle(
         req.params.projectId,
-        options.ownerId,
+        req.platformPrincipal.userId,
         req.params.workflowId,
         req.body.expectedDraftRevision,
         req.body.enabled,

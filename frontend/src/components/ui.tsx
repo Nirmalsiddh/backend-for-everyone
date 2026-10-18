@@ -15,7 +15,7 @@ export function useData<T>(path: string) {
 }
 const errorHints: Record<number, string> = {
   400: 'Check the request fields.',
-  401: 'Authentication failed. For management requests, check operator configuration.',
+  401: 'Your session has expired. Sign in again.',
   403: 'Permission or credential scope denied.',
   404: 'Resource unavailable.',
   429: 'Rate limit reached. Wait before trying again.',

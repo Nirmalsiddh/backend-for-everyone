@@ -51,7 +51,7 @@ export default function Projects() {
     <main>
       <h1>Projects</h1>
       <p className="muted">
-        Local single-operator dashboard. Keep this service private.
+        Create and manage your projects.
       </p>
       <section>
         <h2>Create project</h2>

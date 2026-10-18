@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from './platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
@@ -20,7 +21,7 @@ test('runtime HTTP authentication, fixed routing, CORS, errors, and safe logging
     async resolve(pid, resource) { return pid === projectId && resource === 'products' ? target : undefined; },
   };
   let failure: unknown; let calls = 0;
-  const app = buildApp({ env: { ...env, runtimeAllowedOrigins: ['https://frontend.example'] }, projectRepository: memoryRepository(), runtimeRepository: repository,
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env: { ...env, runtimeAllowedOrigins: ['https://frontend.example'] }, projectRepository: memoryRepository(), runtimeRepository: repository,
     runtimeExecutor: async (_config, _applied, query) => { calls++; if (failure) throw failure; return query.text.startsWith('SELECT') ? [{ id, sku: 'ABC', external_secret: 'must-not-leak' }] : [{ id, sku: 'ABC' }]; }, logger: false });
   const logs: unknown[] = [];
   app.addHook('onRequest', async (req) => { req.log.info = (...args: unknown[]) => { logs.push(args); }; });

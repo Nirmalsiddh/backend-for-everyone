@@ -7,14 +7,12 @@ if (
   throw new Error(
     'Explicit disposable E2E_PLATFORM_DATABASE_URL and E2E_CUSTOMER_DATABASE_URL required',
   );
-process.env.E2E_MANAGEMENT_TOKEN ??= randomBytes(32).toString('hex');
-process.env.MANAGEMENT_API_TOKEN = process.env.E2E_MANAGEMENT_TOKEN;
-process.env.MANAGEMENT_USER_ID = '99999999-9999-4999-8999-999999999999';
 process.env.E2E_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
 process.env.CONNECTION_ENCRYPTION_KEY = process.env.E2E_ENCRYPTION_KEY;
 process.env.E2E_CUSTOMER_SCHEMA ??= 'demo_' + randomBytes(6).toString('hex');
 process.env.BACKEND_ORIGIN = 'http://127.0.0.1:3010';
-process.env.DASHBOARD_ALLOWED_HOSTS = '127.0.0.1:3011,localhost:3011';
+process.env.DASHBOARD_ORIGIN = 'http://127.0.0.1:3011';
+process.env.DASHBOARD_COOKIE_MODE = 'local-http';
 export default defineConfig({
   testDir: 'tests/e2e',
   testMatch: '*.spec.ts',
@@ -38,7 +36,7 @@ export default defineConfig({
     {
       command:
         'npm run build && npx next start --hostname 127.0.0.1 --port 3011',
-      url: 'http://127.0.0.1:3011/projects',
+      url: 'http://127.0.0.1:3011/login',
       timeout: 180000,
       reuseExistingServer: false,
     },

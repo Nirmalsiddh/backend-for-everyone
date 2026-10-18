@@ -1,0 +1,43 @@
+import assert from 'node:assert/strict';
+import { test } from 'node:test';
+import { mkdtemp, mkdir, readFile, writeFile, copyFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { randomUUID } from 'node:crypto';
+import { migrate } from 'drizzle-orm/node-postgres/migrator';
+import { createPlatformDatabase } from '../../src/database/platform-db/client.js';
+import { parseDatabaseUrl } from '../../src/config/env.js';
+
+test('alpha schema upgrade preserves legacy user and project ownership without enabling login', async (t) => {
+  const value = process.env.TEST_LEGACY_DATABASE_URL;
+  if (!value) { t.skip('Explicit empty disposable TEST_LEGACY_DATABASE_URL required for upgrade test'); return; }
+  const url = parseDatabaseUrl(value, 'TEST_LEGACY_DATABASE_URL');
+  if (url === process.env.PLATFORM_DATABASE_URL || url === process.env.TEST_DATABASE_URL) throw new Error('Legacy migration fixture requires a separate empty disposable database');
+  const { db, pool } = createPlatformDatabase(url);
+  const temporary = await mkdtemp(join(tmpdir(), 'platform-alpha-migrations-'));
+  t.after(async () => { await pool.end(); await rm(temporary, { recursive: true, force: true }); });
+  const tables = await pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public'");
+  if (tables.rowCount) throw new Error('Legacy migration fixture requires an empty database; create a fresh disposable database');
+  const folder = fileURLToPath(new URL('../../migrations', import.meta.url));
+  const journal = JSON.parse(await readFile(join(folder, 'meta/_journal.json'), 'utf8'));
+  journal.entries = journal.entries.filter((entry: { idx: number }) => entry.idx < 6);
+  await mkdir(join(temporary, 'meta'));
+  await writeFile(join(temporary, 'meta/_journal.json'), JSON.stringify(journal));
+  for (const entry of journal.entries) await copyFile(join(folder, `${entry.tag}.sql`), join(temporary, `${entry.tag}.sql`));
+  await migrate(db, { migrationsFolder: temporary });
+  const ownerId = randomUUID(); const projectId = randomUUID();
+  await pool.query('INSERT INTO users (id,email) VALUES ($1,$2)', [ownerId, 'legacy@example.test']);
+  await pool.query('INSERT INTO projects (id,owner_id,name,slug) VALUES ($1,$2,$3,$4)', [projectId, ownerId, 'Legacy project', 'legacy-project']);
+  const before = await pool.query('SELECT created_at FROM users WHERE id=$1', [ownerId]);
+  await migrate(db, { migrationsFolder: folder });
+  const result = await pool.query('SELECT u.*,p.owner_id FROM users u JOIN projects p ON p.owner_id=u.id WHERE p.id=$1', [projectId]);
+  assert.equal(result.rows[0].id, ownerId);
+  assert.equal(result.rows[0].owner_id, ownerId);
+  assert.equal(result.rows[0].email, 'legacy@example.test');
+  assert.equal(result.rows[0].password_hash, null);
+  assert.equal(result.rows[0].status, 'disabled');
+  assert.deepEqual(result.rows[0].created_at, before.rows[0].created_at);
+  assert.ok(result.rows[0].updated_at);
+  await migrate(db, { migrationsFolder: folder });
+});

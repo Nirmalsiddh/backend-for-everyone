@@ -191,13 +191,6 @@ input[type='checkbox'] {
   }
 }
 
-.operator-warning {
-  margin: 0;
-  padding: 10px 28px;
-  background: #fff1ca;
-  border-bottom: 1px solid #d4b36a;
-  color: #42320e;
-}
 dialog::backdrop {
   background: #14233a88;
 }

@@ -1,3 +1,4 @@
+import { signupLogin } from './platform-account';
 import { test, expect, type Page, type Locator } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
@@ -33,10 +34,8 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
         : 'Management request succeeded',
     ).toBeLessThan(300);
   }
-  await page.goto('/projects');
-  await expect(
-    page.getByText('Local Operator Mode', { exact: true }),
-  ).toBeVisible();
+  const platformEmail = await signupLogin(page);
+  await expect(page.getByText(platformEmail, { exact: true })).toBeVisible();
   await page.getByLabel('Name', { exact: true }).fill('Dashboard ' + suffix);
   await page.getByLabel('Slug', { exact: true }).fill('demo-' + suffix);
   await page
@@ -381,7 +380,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
     page.getByRole('link', { name: 'POST /accept-order', exact: true }),
   ).toBeVisible();
   const responses = browserResponses.join('\n');
-  expect(responses).not.toContain(process.env.MANAGEMENT_API_TOKEN);
+  expect(responses).not.toMatch(/ps_[A-Za-z0-9_-]{43}/);
   expect(responses).not.toContain(decodeURIComponent(customer.password));
   expect(responses).not.toMatch(
     /"(?:encryptedConfig|passwordHash|tokenHash|keyHash|catalog)"/,

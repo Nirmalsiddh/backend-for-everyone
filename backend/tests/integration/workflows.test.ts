@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -52,7 +53,7 @@ test('custom workflows real PostgreSQL transactions, authorization and concurren
   const project = await projectRepository.create(ownerId, { name: 'Workflow', slug: `wf-${randomUUID()}` }); projectIds.push(project.id);
   const deps = { projectRepository, schemaRepository, workflowRepository, connectionRepository: new PostgresConnectionRepository(db), endpointRepository: new PostgresEndpointRepository(db),
     apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), logger: false as const };
-  const app = buildApp({ ...deps, env: { ...env, managementUserId: ownerId } }); const otherApp = buildApp({ ...deps, env: { ...env, managementUserId: otherOwnerId } });
+  const app = buildApp({ ...deps, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env }); const otherApp = buildApp({ ...deps, platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId), env });
   t.after(async () => { await app.close(); await otherApp.close(); });
   const management = `/internal/projects/${project.id}`; const base = `/api/${project.slug}`;
   const config = { host: customerUrl.hostname, port: Number(customerUrl.port || 5432), database: decodeURIComponent(customerUrl.pathname.slice(1)), username: decodeURIComponent(customerUrl.username), password: decodeURIComponent(customerUrl.password), schema, ssl: false, label: 'Workflow fixture' };

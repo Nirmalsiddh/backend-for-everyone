@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -54,8 +55,8 @@ test('Schema Builder real PostgreSQL management lifecycle', async (t) => {
   let entered: (() => void) | undefined;
   const realExecutor = createSchemaExecutor();
   const executor: SchemaExecutor = async (...args) => { entered?.(); if (pause) await pause; return realExecutor(...args); };
-  const app = buildApp({ env: { ...env, managementUserId: ownerId }, projectRepository, connectionRepository, schemaRepository: repository, schemaExecutor: executor, logger: false });
-  const otherApp = buildApp({ env: { ...env, managementUserId: otherOwnerId }, projectRepository, connectionRepository, schemaRepository: repository, logger: false });
+  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository(ownerId), env, projectRepository, connectionRepository, schemaRepository: repository, schemaExecutor: executor, logger: false });
+  const otherApp = buildApp({ platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId), env, projectRepository, connectionRepository, schemaRepository: repository, logger: false });
   t.after(async () => { await app.close(); await otherApp.close(); });
   const base = `/internal/projects/${project.id}/schema`;
   const connectionPath = `/internal/projects/${project.id}/database-connection`;

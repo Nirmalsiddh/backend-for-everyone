@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -47,8 +48,8 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
   const other = await projectRepository.create(otherOwnerId, { name: 'Other auth', slug: `auth-${randomUUID()}` }); ids.push(other.id);
   const dependencies = { projectRepository, schemaRepository, connectionRepository: new PostgresConnectionRepository(db), endpointRepository: new PostgresEndpointRepository(db),
     apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), logger: false as const };
-  const app = buildApp({ ...dependencies, env: { ...env, managementUserId: ownerId }, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
-  const otherApp = buildApp({ ...dependencies, env: { ...env, managementUserId: otherOwnerId }, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
+  const app = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
+  const otherApp = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId), env, authRateLimiter: new AuthRateLimiter(60000, 1000, 1000) });
   t.after(async () => { await app.close(); await otherApp.close(); });
   const management = `/internal/projects/${project.id}`; const otherManagement = `/internal/projects/${other.id}`; const base = `/api/${project.slug}`;
   const config = { host: customerUrl.hostname, port: Number(customerUrl.port || 5432), database: decodeURIComponent(customerUrl.pathname.slice(1)),
@@ -217,7 +218,7 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     assert.equal((await customer.query(`SELECT 1 FROM ${q(schema)}.${q(usersName)} WHERE id=$1`, [aliceId])).rowCount, 1);
   });
   await t.test('session revocation between authentication and mutation is rechecked in the CRUD transaction', async () => {
-    const raceApp = buildApp({ ...dependencies, env: { ...env, managementUserId: ownerId }, runtimeRepository: {
+    const raceApp = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env, runtimeRepository: {
       authenticate: (slug, hash) => dependencies.runtimeRepository.authenticate(slug, hash),
       resolve: async (projectId, resource) => {
         const target = await dependencies.runtimeRepository.resolve(projectId, resource);

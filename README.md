@@ -37,7 +37,7 @@ backend/
     modules/workflows/            workflow drafts, publication, validation, interpreter
     runtime/                      fixed routes, validation, safe query compilation
     database/customer-db/         short-lived diagnostics and transactional schema executor
-    security/                     management authentication and AES-GCM encryption
+    security/                     shared password hashing and AES-GCM encryption
   migrations/                     generated SQL and Drizzle metadata
   tests/                          unit and HTTP injection tests
     integration/                  real PostgreSQL tests
@@ -55,44 +55,31 @@ cp .env.example .env
 node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 ```
 
-Set `MANAGEMENT_API_TOKEN` in `.env` to the generated token. Generate a separate value using the same command for `CONNECTION_ENCRYPTION_KEY` (exactly 64 hex characters). Keep the encryption key outside PostgreSQL and source control; retain it across restarts. Losing or changing it makes saved customer credentials unreadable. Configure `PLATFORM_DATABASE_URL` for an existing, dedicated platform database. The migration role needs DDL permissions; use a restricted application role for normal operation. Do not use customer database credentials here. PostgreSQL TLS can be configured through the connection URL; do not disable certificate verification for remote databases.
+Use the generated value for `CONNECTION_ENCRYPTION_KEY` (exactly 64 hex characters). Keep the encryption key outside PostgreSQL and source control; retain it across restarts. Losing or changing it makes saved customer credentials unreadable. Configure `PLATFORM_DATABASE_URL` for an existing, dedicated platform database. The migration role needs DDL permissions; use a restricted application role for normal operation. Do not use customer database credentials here. PostgreSQL TLS can be configured through the connection URL; do not disable certificate verification for remote databases.
 
 ```sh
 npm run db:migrate
 ```
 
-Using your PostgreSQL client, bootstrap a platform user in that database:
+Start the backend with `npm run dev`, configure the dashboard as described in [frontend/README.md](frontend/README.md), then visit `/signup` and `/login`. No manually inserted operator or fixed management token is required. The backend listens on `127.0.0.1:3000` by default. Migrations remain an explicit deployment step.
 
-```sql
-INSERT INTO users (id, email)
-VALUES ('11111111-1111-4111-8111-111111111111', 'developer@example.test');
-```
+## Platform authentication and management API
 
-Set `MANAGEMENT_USER_ID` to the inserted UUID, then start:
+Platform users live in the platform `users` table. Customer application users and sessions remain in customer PostgreSQL and are independent. Public `POST /internal/auth/signup` accepts email/password, normalizes email by trimming/lowercasing, and returns the same 202 for new/existing emails. It does not create a session or change existing accounts. Passwords require 15–128 Unicode code points and at most 512 UTF-8 bytes. Login verifies Argon2id and returns a fresh opaque `ps_` session once to the trusted Next.js server. `/internal/auth/me` returns only ID/email; `/internal/auth/logout` revokes only the current session.
 
-```sh
-npm run dev
-```
+All protected `/internal` requests require a platform session bearer credential. The database stores only its SHA-256 digest; sessions expire absolutely after 24 hours. Every request checks expiry, revocation, and active user status. Hourly cleanup deletes at most 500 sessions expired/revoked more than seven days ago; authorization never depends on cleanup. There is no refresh token or local bypass.
 
-The default listener is `127.0.0.1:3000`. Startup verifies database access, migrated users table, and the configured user. Missing configuration or database setup causes startup to fail. `.env` is loaded by the scripts and is ignored by version control. Migrations are an explicit deployment step, never applied automatically on server startup.
+Projects and nested management resources derive ownership from the validated platform principal and retain owner-scoped persistence queries. Unknown/foreign resources return 404. Platform sessions cannot authorize customer runtime routes; customer `us_` sessions and project API keys cannot authorize management routes.
 
-## Management API
+Login limits: 20/minute/IP and 5/15 minutes/email+IP. Signup: 5/15 minutes/IP and 3/hour/email+IP. Counters are bounded to 10,000 entries, count successes/failures, return 429/Retry-After, and never permanently lock an account. Limits are single-process, reset at restart, and require shared storage before multi-instance deployment. Password hashing shares a process-wide default budget of two concurrent operations with customer auth.
 
-The temporary bearer credential maps to one configured platform user. It is a local/operator bootstrap mechanism, not dashboard login or multi-user authentication. Never embed this token in frontend code. Replace it with verified per-user authentication before exposing a dashboard or public management service. Use HTTPS and deployment-level rate limits outside local development.
+### Upgrading existing alpha data
 
-Export `MANAGEMENT_API_TOKEN` in your shell to the same value configured in `.env`, then:
+Back up the platform database, stop the old dashboard/backend, and apply migration `0006_dusty_micromacro.sql` before starting the new code. Existing user IDs, emails, creation times and project owners are preserved. Existing users receive `status=disabled` and a null password hash. Signup cannot claim these accounts. Remove obsolete `MANAGEMENT_API_TOKEN` and `MANAGEMENT_USER_ID` environment settings; neither is used by the application.
 
-```sh
-curl -i http://127.0.0.1:3000/internal/projects \
-  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN" \
-  -H 'Content-Type: application/json' \
-  -d '{"name":"My Shop","slug":"my-shop"}'
+New development/test accounts use signup/login. An existing operator remains unable to log in until explicitly provisioned by a trusted database administrator: generate an Argon2id hash using the shared backend hasher through a private local tool, then parameterize an UPDATE for that exact user ID setting `password_hash`, `status='active'`, and `updated_at=now()`. Do not put the password/hash in shell arguments, logs, SQL history, or source control. This is a one-off migration task, not a runtime fallback; no provisioning endpoint is provided.
 
-curl http://127.0.0.1:3000/internal/projects/PROJECT_UUID \
-  -H "Authorization: Bearer $MANAGEMENT_API_TOKEN"
-```
-
-Creation returns `201`, a `Location` header, and `{ id, ownerId, name, slug, createdAt }`. Slugs are globally unique because future runtime URLs identify projects by slug: 3–63 lowercase letters/digits with single internal hyphens, starting with a letter. Names are trimmed and limited to 100 characters. Clients cannot choose project ownership. Retrieval returns `404` for both absent and foreign-owned projects. Other errors include `400` invalid input, `401` invalid credentials, `403` unavailable configured owner, `409` duplicate slug, and `413` body over 64 KiB.
+No email verification or password recovery exists in this milestone. Email is a login identifier, not proof of mailbox ownership. HTTPS is mandatory in production. Never log credential bodies, password hashes, session tokens/digests, Authorization, Cookie or Set-Cookie headers.
 
 ## Validation and migrations
 
@@ -114,11 +101,13 @@ TEST_CUSTOMER_DATABASE_URL=postgresql://customer:password@localhost:5432/custome
 npm run test:integration
 ```
 
+For the optional alpha-upgrade preservation test, also provide `TEST_LEGACY_DATABASE_URL` pointing to a separate **empty** disposable database. This fixture applies alpha migrations, inserts a legacy operator/project, then applies the auth migration; use a fresh database for each run.
+
 This command requires both URLs explicitly, applies migrations to the platform test database, and inserts/deletes test-owned records. The customer test database must be separate, have a `public` schema, accept non-TLS connections for this local fixture, and enforce password authentication (SCRAM recommended); trust authentication cannot verify the invalid-password test. Integration files run sequentially to avoid competing migration setup. Never target a production database. It checks persistence, owner isolation, duplicate conflicts, foreign keys, checks, SQL value parameterization, and repeat migration application. No coverage threshold is set yet.
 
 ## Customer PostgreSQL connections
 
-Each project supports one connection. All five routes require the management bearer token and project ownership:
+Each project supports one connection. All five routes require the platform session bearer credential and project ownership:
 
 | Method | Route | Behavior |
 |---|---|---|
@@ -477,9 +466,9 @@ Set Variable, find_many, additional HTTP methods, route parameters, arbitrary SQ
 
 ## Dashboard MVP
 
-The local single-operator Next.js dashboard lives in `frontend/`. See [frontend setup and complete demo](frontend/README.md) for environment configuration, running both applications, and disposable Playwright testing. Do not publicly expose the dashboard; its management token stays on the Next.js server and maps to the existing temporary operator.
+The authenticated Next.js dashboard lives in `frontend/`. See [frontend setup and complete demo](frontend/README.md) for signup/login, environment configuration, running both applications, and disposable Playwright testing. Fastify validates platform sessions and enforces project ownership.
 
-`GET /internal/projects?limit=20&offset=0` lists only the configured owner's projects. `limit` is 1–100, `offset` is 0–999999, and unknown query parameters are rejected. The response is `{ items, nextOffset }`; `nextOffset` is null at the end. Results are ordered by creation timestamp and ID. Offset pagination can shift if records are concurrently changed. Existing create/get responses are unchanged.
+`GET /internal/projects?limit=20&offset=0` lists only the authenticated platform user's projects. `limit` is 1–100, `offset` is 0–999999, and unknown query parameters are rejected. The response is `{ items, nextOffset }`; `nextOffset` is null at the end. Results are ordered by creation timestamp and ID. Offset pagination can shift if records are concurrently changed. Existing create/get responses are unchanged.
 
 Management and runtime responses now include `X-Request-Id`, including errors. Error response bodies retain their existing contracts.
 

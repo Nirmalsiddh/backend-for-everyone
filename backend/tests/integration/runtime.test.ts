@@ -1,3 +1,4 @@
+import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -52,8 +53,8 @@ test('predefined runtime real PostgreSQL core product flow', async (t) => {
   const connectionRepository = new PostgresConnectionRepository(db); const schemaRepository = new PostgresSchemaRepository(db);
   const endpointRepository = new PostgresEndpointRepository(db); const apiKeyRepository = new PostgresApiKeyRepository(db); const runtimeRepository = new PostgresRuntimeRepository(db);
   const dependencies = { projectRepository, connectionRepository, schemaRepository, endpointRepository, apiKeyRepository, runtimeRepository, logger: false as const };
-  const app = buildApp({ ...dependencies, env: { ...env, managementUserId: ownerId, runtimeAllowedOrigins: ['https://frontend.example'] } });
-  const otherApp = buildApp({ ...dependencies, env: { ...env, managementUserId: otherOwnerId } });
+  const app = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env: { ...env, runtimeAllowedOrigins: ['https://frontend.example'] } });
+  const otherApp = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId), env });
   t.after(async () => { await app.close(); await otherApp.close(); });
   const management = `/internal/projects/${project.id}`;
   const config = { host: customerUrl.hostname, port: Number(customerUrl.port || 5432), database: decodeURIComponent(customerUrl.pathname.slice(1)),

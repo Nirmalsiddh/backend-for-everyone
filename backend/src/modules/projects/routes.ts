@@ -20,7 +20,6 @@ export async function projectRoutes(
   app: FastifyInstance,
   options: {
     service: ProjectService;
-    ownerId: string;
   },
 ) {
   app.get<{ Querystring: { limit?: string; offset?: string } }>(
@@ -50,7 +49,7 @@ export async function projectRoutes(
     },
     (request) =>
       options.service.list(
-        options.ownerId,
+        request.platformPrincipal.userId,
         Number(request.query.limit ?? 20),
         Number(request.query.offset ?? 0),
       ),
@@ -84,7 +83,7 @@ export async function projectRoutes(
     },
     async (request, reply) => {
       const project = await options.service.create(
-        options.ownerId,
+        request.platformPrincipal.userId,
         request.body,
       );
       return reply
@@ -107,6 +106,6 @@ export async function projectRoutes(
         response: { 200: projectResponse },
       },
     },
-    (request) => options.service.getById(options.ownerId, request.params.id),
+    (request) => options.service.getById(request.platformPrincipal.userId, request.params.id),
   );
 }

@@ -8,14 +8,12 @@ import type {
 
 export const ownerId = '11111111-1111-4111-8111-111111111111';
 export const otherOwnerId = '22222222-2222-4222-8222-222222222222';
-export const token = 'test-token-0123456789-abcdefghijklmnop';
+export const token = 'ps_' + 'a'.repeat(43);
 export const auth = { authorization: `Bearer ${token}` };
 export const env = loadEnv({
   CONNECTION_ENCRYPTION_KEY: '11'.repeat(32),
   NODE_ENV: 'test',
   PLATFORM_DATABASE_URL: 'postgresql://test:test@localhost/platform_test',
-  MANAGEMENT_API_TOKEN: token,
-  MANAGEMENT_USER_ID: ownerId,
 });
 
 export function memoryRepository(): ProjectRepository {

@@ -38,13 +38,6 @@ const migrate = spawnSync(
   { cwd: backend, env, stdio: 'inherit' },
 );
 if (migrate.status !== 0) process.exit(1);
-const client = new Client({ connectionString: platform });
-await client.connect();
-await client.query(
-  'INSERT INTO users (id,email) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING',
-  [env.MANAGEMENT_USER_ID, 'dashboard-e2e@example.test'],
-);
-await client.end();
 const child = spawn(process.execPath, ['--import', 'tsx', 'src/server.ts'], {
   cwd: backend,
   env,
