@@ -1,9 +1,12 @@
+import { trustedProxyPeers } from '../security/proxy-trust.js';
+import { destinationConfig } from '../security/customer-destination.js';
 export interface Env {
   nodeEnv: 'development' | 'test' | 'production';
   host: string;
   port: number;
   databaseUrl: string;
   trustedDashboardProxy: string;
+  trustedProxyIps: string[];
   connectionEncryptionKey: string;
   runtimeAllowedOrigins: string[];
 }
@@ -36,6 +39,8 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   if (!host.trim()) throw new Error('HOST must not be blank');
   const trustedDashboardProxy = source.TRUSTED_DASHBOARD_PROXY ?? '';
   if (trustedDashboardProxy && !['127.0.0.1', '::1'].includes(trustedDashboardProxy)) throw new Error('TRUSTED_DASHBOARD_PROXY must be an explicit loopback IP');
+  const trustedProxyIps = trustedProxyPeers(source.TRUSTED_PROXY_IPS ?? trustedDashboardProxy);
+  destinationConfig(source);
   const connectionEncryptionKey = source.CONNECTION_ENCRYPTION_KEY ?? '';
   if (!/^[a-fA-F0-9]{64}$/.test(connectionEncryptionKey)) {
     throw new Error('CONNECTION_ENCRYPTION_KEY must be a 32-byte hex key');
@@ -52,6 +57,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     connectionEncryptionKey,
     nodeEnv: nodeEnv as Env['nodeEnv'], host, port,
     databaseUrl: parseDatabaseUrl(source.PLATFORM_DATABASE_URL, 'PLATFORM_DATABASE_URL'),
-    trustedDashboardProxy,
+    trustedDashboardProxy, trustedProxyIps,
   };
 }

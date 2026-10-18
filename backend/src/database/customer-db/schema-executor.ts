@@ -1,3 +1,4 @@
+import { customerConnectionOptions, DestinationError } from '../../security/customer-destination.js';
 import { catalog } from './catalog.js';
 import pg from 'pg';
 import { canonical, quoteIdentifier } from '../../modules/schema-builder/plan.js';
@@ -13,9 +14,9 @@ export interface SchemaClient {
 
 export function createSchemaExecutor(factory: (options: pg.ClientConfig) => SchemaClient = (options) => new pg.Client(options)): SchemaExecutor {
   return async (config, plan, applied) => {
-    const client = factory({ host: config.host, port: config.port, database: config.database, user: config.username,
+    const client = factory(await customerConnectionOptions({ host: config.host, port: config.port, database: config.database, user: config.username,
       password: config.password, ssl: config.ssl ? { rejectUnauthorized: true } : false,
-      connectionTimeoutMillis: 5000, statement_timeout: 5000, query_timeout: 6000, application_name: 'platform-schema-builder' });
+      connectionTimeoutMillis: 5000, statement_timeout: 5000, query_timeout: 6000, application_name: 'platform-schema-builder' }));
     client.on('error', () => {});
     let committing = false;
     let transaction = false;
@@ -39,6 +40,7 @@ export function createSchemaExecutor(factory: (options: pg.ClientConfig) => Sche
       transaction = false;
       return snapshot;
     } catch (error) {
+      if (error instanceof DestinationError) throw error;
       if (committing) throw new SchemaError(503, 'SCHEMA_OUTCOME_UNKNOWN', 'Customer commit outcome is unknown; operator reconciliation is required');
       if (transaction) await client.query('ROLLBACK').catch(() => {});
       if (error instanceof SchemaError) throw error;

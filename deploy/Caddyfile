@@ -1,0 +1,55 @@
+{
+  email {$ACME_EMAIL}
+  admin localhost:2019
+  log {
+    format filter {
+      wrap json
+      fields {
+        request delete
+        resp_headers delete
+      }
+    }
+  }
+}
+
+{$APP_DOMAIN} {
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    X-Frame-Options DENY
+    Content-Security-Policy "frame-ancestors 'none'"
+    Strict-Transport-Security "max-age=86400"
+    -Server
+  }
+  @testers remote_ip {$TESTER_CIDRS}
+  handle @testers {
+    reverse_proxy frontend:3001 {
+      header_up Host {$APP_DOMAIN}
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up -Forwarded
+    }
+  }
+  handle {
+    respond "Access restricted" 403
+  }
+}
+
+{$API_DOMAIN} {
+  header {
+    X-Content-Type-Options nosniff
+    Referrer-Policy strict-origin-when-cross-origin
+    Strict-Transport-Security "max-age=86400"
+    -Server
+  }
+  handle /api/* {
+    reverse_proxy backend:3000 {
+      header_up X-Real-IP {remote_host}
+      header_up X-Forwarded-For {remote_host}
+      header_up -Forwarded
+    }
+  }
+  handle {
+    respond "Not found" 404
+  }
+}

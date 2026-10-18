@@ -1,0 +1,90 @@
+name: checks
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        component: [backend, frontend]
+    defaults:
+      run:
+        working-directory: ${{ matrix.component }}
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: ${{ matrix.component }}/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+  integration:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:18-bookworm
+        env:
+          POSTGRES_PASSWORD: disposable-ci-password
+          POSTGRES_DB: platform_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      TEST_DATABASE_URL: postgresql://postgres:disposable-ci-password@127.0.0.1:5432/platform_test
+      TEST_CUSTOMER_DATABASE_URL: postgresql://postgres:disposable-ci-password@127.0.0.1:5432/customer_test
+      TEST_LEGACY_DATABASE_URL: postgresql://postgres:disposable-ci-password@127.0.0.1:5432/platform_legacy_test
+      E2E_PLATFORM_DATABASE_URL: postgresql://postgres:disposable-ci-password@127.0.0.1:5432/dashboard_e2e_platform_test
+      E2E_CUSTOMER_DATABASE_URL: postgresql://postgres:disposable-ci-password@127.0.0.1:5432/dashboard_e2e_customer_test
+      PGPASSWORD: disposable-ci-password
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-node@v7
+        with: { node-version: 24 }
+      - run: npm ci --prefix backend && npm ci --prefix frontend
+      - run: |
+          for database in customer_test platform_legacy_test dashboard_e2e_platform_test dashboard_e2e_customer_test; do
+            createdb -h 127.0.0.1 -U postgres "$database"
+          done
+      - run: npm run test:integration --prefix backend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - run: npm run test:e2e --prefix frontend
+  containers:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - run: docker build -f backend/Dockerfile -t platform-backend:ci .
+      - run: docker build -f frontend/Dockerfile -t platform-frontend:ci .
+      - run: node deploy/check-config.mjs
+  release-images:
+    if: startsWith(github.ref, 'refs/tags/v') && github.event_name == 'push'
+    needs: [checks, integration, containers]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with: { persist-credentials: false }
+      - name: Build and publish immutable release and commit references
+        env:
+          REGISTRY_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          printf '%s' "$REGISTRY_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          repository="${GITHUB_REPOSITORY,,}"
+          for component in backend frontend; do
+            image="ghcr.io/$repository-$component"
+            docker build -f "$component/Dockerfile" -t "$image:$GITHUB_REF_NAME" -t "$image:sha-$GITHUB_SHA" .
+            docker push "$image:$GITHUB_REF_NAME"
+            docker push "$image:sha-$GITHUB_SHA"
+          done

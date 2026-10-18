@@ -1,14 +1,11 @@
+import { publicRuntimeOrigin } from '@/lib/server/runtime-origin';
 import type { ReactNode } from 'react';
 import { Providers } from '@/components/providers';
 import './styles.css';
+export const dynamic = 'force-dynamic';
 export const metadata = { title: 'Platform Dashboard' };
 export default function RootLayout({ children }: { children: ReactNode }) {
-  let runtimeOrigin = '';
-  try {
-    runtimeOrigin = new URL(
-      process.env.BACKEND_ORIGIN ?? 'http://127.0.0.1:3000',
-    ).origin;
-  } catch {}
+  const runtimeOrigin = publicRuntimeOrigin();
   return (
     <html lang="en">
       <head>

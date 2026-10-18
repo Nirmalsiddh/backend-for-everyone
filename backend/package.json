@@ -20,6 +20,7 @@
     "argon2": "^0.45.1",
     "drizzle-orm": "^0.45.4",
     "fastify": "^5.12.7",
+    "ipaddr.js": "2.5.0",
     "pg": "^8.23.1"
   },
   "devDependencies": {

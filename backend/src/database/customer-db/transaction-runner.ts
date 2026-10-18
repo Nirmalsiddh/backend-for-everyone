@@ -1,3 +1,4 @@
+import { customerConnectionOptions, DestinationError } from '../../security/customer-destination.js';
 import pg from 'pg';
 import type { ConnectionConfig } from '../../modules/database-connections/types.js';
 import { RuntimeError, unavailable } from '../../runtime/errors.js';
@@ -18,8 +19,8 @@ export function createTransactionRunner(factory: (options: pg.ClientConfig) => S
     const deadline = Date.now() + deadlineMs;
     const remaining = () => { if (expired || Date.now() >= deadline) throw timeout(); return Math.max(1, Math.min(2000, deadline - Date.now())); };
     try {
-      raw = factory({ host: config.host, port: config.port, database: config.database, user: config.username, password: config.password,
-        ssl: config.ssl ? { rejectUnauthorized: true } : false, connectionTimeoutMillis: Math.min(5000, deadlineMs), statement_timeout: 2000, query_timeout: 3000, application_name: 'platform-runtime' });
+      raw = factory(await customerConnectionOptions({ host: config.host, port: config.port, database: config.database, user: config.username, password: config.password,
+        ssl: config.ssl ? { rejectUnauthorized: true } : false, connectionTimeoutMillis: Math.min(5000, deadlineMs), statement_timeout: 2000, query_timeout: 3000, application_name: 'platform-runtime' }));
       raw.on('error', () => {});
       // pg.Client.end destroys the socket when a query is active, cancelling server work.
       timer = setTimeout(() => { expired = true; void end(); }, deadlineMs);
@@ -36,6 +37,7 @@ export function createTransactionRunner(factory: (options: pg.ClientConfig) => S
       };
       const result = await work(client); remaining(); committing = true; await raw.query('COMMIT'); transaction = false; return result;
     } catch (error) {
+      if (error instanceof DestinationError) throw error;
       if (committing) throw new RuntimeError(503, 'WRITE_OUTCOME_UNKNOWN', 'Request outcome could not be confirmed; do not automatically retry writes');
       if (transaction && raw && !expired) await raw.query('ROLLBACK').catch(() => {});
       if (expired) throw timeout();

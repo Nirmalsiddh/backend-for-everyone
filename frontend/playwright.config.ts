@@ -11,6 +11,7 @@ process.env.E2E_ENCRYPTION_KEY ??= randomBytes(32).toString('hex');
 process.env.CONNECTION_ENCRYPTION_KEY = process.env.E2E_ENCRYPTION_KEY;
 process.env.E2E_CUSTOMER_SCHEMA ??= 'demo_' + randomBytes(6).toString('hex');
 process.env.BACKEND_ORIGIN = 'http://127.0.0.1:3010';
+process.env.PUBLIC_RUNTIME_ORIGIN = 'http://127.0.0.1:3010';
 process.env.DASHBOARD_ORIGIN = 'http://127.0.0.1:3011';
 process.env.DASHBOARD_COOKIE_MODE = 'local-http';
 export default defineConfig({

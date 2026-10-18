@@ -1,3 +1,4 @@
+import { DestinationError } from './security/customer-destination.js';
 import { workflowRoutes } from './modules/workflows/routes.js';
 import { WorkflowService } from './modules/workflows/service.js';
 import { WorkflowEngine } from './modules/workflows/engine.js';
@@ -63,6 +64,7 @@ export function buildApp(options: {
   platformAuthRepository: PlatformAuthRepository;
   projectRepository: ProjectRepository;
   logger?: boolean;
+  readiness?: () => Promise<void>;
   connectionRepository?: ConnectionRepository;
   connectionTester?: ConnectionTester;
   schemaRepository?: SchemaRepository;
@@ -79,7 +81,7 @@ export function buildApp(options: {
   authRateLimiter?: AuthRateLimiter;
 }) {
   const app = Fastify({
-    trustProxy: options.env.trustedDashboardProxy || false,
+    trustProxy: options.env.trustedProxyIps.length ? options.env.trustedProxyIps : false,
     logger:
       options.logger === false
         ? false
@@ -109,18 +111,32 @@ export function buildApp(options: {
     },
   });
 
+  const failureCategories = new WeakMap<object, string>();
   app.addHook('onRequest', async (request, reply) => {
     reply.header('X-Request-Id', request.id);
   });
 
+  app.get('/health/live', async (_request, reply) => reply.header('cache-control', 'no-store').send({ status: 'alive' }));
+  app.get('/health/ready', async (_request, reply) => {
+    reply.header('cache-control', 'no-store');
+    try {
+      if (!options.readiness) throw new Error('Not ready');
+      await options.readiness();
+      return { status: 'ready' };
+    } catch { return reply.code(503).send({ status: 'unavailable' }); }
+  });
+
   app.setErrorHandler<FastifyError>((error, request, reply) => {
+    failureCategories.set(request, 'REQUEST_FAILED');
     if (
+      error instanceof DestinationError ||
       error instanceof PlatformAuthError ||
       error instanceof ProjectError ||
       error instanceof ConnectionError ||
       error instanceof SchemaError ||
       error instanceof RuntimeError
     ) {
+      failureCategories.set(request, error.code);
       if (error instanceof AuthRateLimitError || (error instanceof PlatformAuthError && error.retryAfter))
         reply.header('retry-after', String(error.retryAfter));
       if (error.statusCode === 401) reply.header('www-authenticate', 'Bearer');
@@ -153,6 +169,10 @@ export function buildApp(options: {
   app.addHook('onResponse', async (request, reply) => {
     request.log.info(
       {
+        requestId: request.id,
+        durationMs: reply.elapsedTime,
+        platformUserId: request.platformPrincipal?.userId,
+        failureCategory: failureCategories.get(request),
         method: request.method,
         route: request.routeOptions.url ?? 'unmatched',
         statusCode: reply.statusCode,

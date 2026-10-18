@@ -1,3 +1,4 @@
+import { DestinationError } from '../security/customer-destination.js';
 import type { WorkflowEngine } from '../modules/workflows/engine.js';
 import type { WorkflowResult } from '../modules/workflows/types.js';
 import type { AuthService } from '../modules/project-auth/service.js';
@@ -12,7 +13,7 @@ export async function runtimeRoutes(app: FastifyInstance, options: { service: Ru
   type Context = { identity?: RuntimePrincipal; workflow?: Omit<WorkflowResult, 'body'>; action?: string; endpointId?: string; operation?: Operation; rowCount?: number; errorCode?: string };
   const contexts = new WeakMap<FastifyRequest, Context>();
   app.setErrorHandler<FastifyError>((error, req, reply) => {
-    const known = error instanceof RuntimeError;
+    const known = error instanceof RuntimeError || error instanceof DestinationError;
     const status = known ? error.statusCode : error.statusCode && error.statusCode >= 400 && error.statusCode < 500 ? error.statusCode : 500;
     const code = known ? error.code : status === 500 ? 'INTERNAL_ERROR' : 'INVALID_REQUEST';
     const context = contexts.get(req); if (context) context.errorCode = code;
@@ -34,6 +35,7 @@ export async function runtimeRoutes(app: FastifyInstance, options: { service: Ru
     const context = contexts.get(req);
     req.log.info({ requestId: req.id, route: req.routeOptions.url, method: req.method, status: reply.statusCode,
       duration: reply.elapsedTime, ...(context?.workflow ?? {}), projectId: context?.identity?.projectId, apiKeyId: context?.identity && 'keyId' in context.identity ? context.identity.keyId : undefined,
+      applicationUserId: context?.identity && 'userId' in context.identity ? context.identity.userId : undefined,
       action: context?.action,
       endpointId: context?.endpointId, operation: context?.operation, rowCount: context?.rowCount, errorCode: context?.errorCode }, 'Runtime request completed');
   });

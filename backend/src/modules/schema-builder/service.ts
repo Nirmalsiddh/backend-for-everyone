@@ -1,3 +1,4 @@
+import { DestinationError } from '../../security/customer-destination.js';
 import { schemaTableDto } from './dto.js';
 import type { ConnectionRepository } from '../database-connections/types.js';
 import { CredentialEncryption } from '../../security/encryption.js';
@@ -103,7 +104,9 @@ export class SchemaService {
       catalog = await this.executor(config, plan, table.appliedDefinition);
     } catch (error) {
       const safe =
-        error instanceof SchemaError
+        error instanceof DestinationError
+          ? new SchemaError(error.statusCode, error.code, error.message)
+          : error instanceof SchemaError
           ? error
           : new SchemaError(
               422,

@@ -478,3 +478,7 @@ The existing owned workflow GET response also includes `publishedDefinition` (or
 ## Developer usability and reliability
 
 Management schema responses now exclude internal catalog snapshots and include safe latest-apply status. Owned connection GET includes safe identity plus replacement blockers. Workflow responses include dependency readiness; previews omit internal SQL templates. Existing error envelopes and runtime authorization/transaction semantics are unchanged. The dashboard preserves intentional runtime JSON responses (including rejection bodies), uses targeted failure/success status refresh, protects dirty forms, and suppresses late responses after clearing credentials. Public transport vocabulary lives in `shared/`; it contains no persistence models. See [external testing and performance limitations](frontend/README.md#external-tester-boundary-and-reliability).
+
+## Private-alpha deployment
+
+See [the one-server deployment runbook](deploy/README.md) for Docker Compose, HTTPS, approved customer destinations, backup/restore, smoke checks, release and rollback. Local development remains separate.

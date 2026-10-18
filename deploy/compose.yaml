@@ -1,0 +1,124 @@
+name: private-alpha
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+x-backend: &backend
+  image: ${BACKEND_IMAGE:?Set an immutable backend image tag or digest}
+  build:
+    context: ..
+    dockerfile: backend/Dockerfile
+  init: true
+  logging: *logging
+  security_opt: ["no-new-privileges:true"]
+services:
+  platform-postgres:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    command: ["postgres", "-c", "log_statement=none", "-c", "log_min_error_statement=panic", "-c", "log_error_verbosity=terse", "-c", "log_parameter_max_length=0", "-c", "log_parameter_max_length_on_error=0"]
+    environment:
+      POSTGRES_DB: platform
+      POSTGRES_USER: platform_bootstrap
+      POSTGRES_PASSWORD: ${POSTGRES_BOOTSTRAP_PASSWORD:?Required}
+      APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Required}
+      MIGRATION_PASSWORD: ${POSTGRES_MIGRATION_PASSWORD:?Required}
+      POSTGRES_INITDB_ARGS: --auth-host=scram-sha-256
+    volumes:
+      - platform-data:/var/lib/postgresql
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/10-platform.sh:ro
+    networks: [database]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U platform_bootstrap -d platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+  migrate:
+    <<: *backend
+    profiles: ["tools"]
+    command: ["node", "dist/database/platform-db/migrate.js"]
+    environment:
+      PLATFORM_DATABASE_URL: postgresql://platform_migrator:${POSTGRES_MIGRATION_PASSWORD:?Required}@platform-postgres:5432/platform
+      PROVISION_ALPHA_ROLES: "1"
+    networks: [database]
+    depends_on:
+      platform-postgres: { condition: service_healthy }
+  backend:
+    <<: *backend
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      PLATFORM_DATABASE_URL: postgresql://platform_app:${POSTGRES_APP_PASSWORD:?Required}@platform-postgres:5432/platform
+      CONNECTION_ENCRYPTION_KEY: ${CONNECTION_ENCRYPTION_KEY:?Required}
+      TRUSTED_PROXY_IPS: ${CADDY_IP:-172.30.10.2},${FRONTEND_IP:-172.30.10.3}
+      CUSTOMER_DB_POLICY: restricted
+      CUSTOMER_DB_ALLOWED_DESTINATIONS: ${CUSTOMER_DB_ALLOWED_DESTINATIONS:?Set approved exact host:port destinations}
+      RUNTIME_ALLOWED_ORIGINS: ${RUNTIME_ALLOWED_ORIGINS:-}
+    networks:
+      proxy: { ipv4_address: "${BACKEND_IP:-172.30.10.4}" }
+      database: {}
+    depends_on:
+      platform-postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+  frontend:
+    image: ${FRONTEND_IMAGE:?Set an immutable frontend image tag or digest}
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      BACKEND_ORIGIN: http://backend:3000
+      DASHBOARD_ORIGIN: https://${APP_DOMAIN:?Required}
+      DASHBOARD_COOKIE_MODE: secure
+      PUBLIC_RUNTIME_ORIGIN: https://${API_DOMAIN:?Required}
+      DASHBOARD_TRUSTED_CLIENT_IP_HEADER: x-real-ip
+    networks:
+      proxy: { ipv4_address: "${FRONTEND_IP:-172.30.10.3}" }
+    depends_on:
+      backend: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health/ready').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 4s
+      retries: 6
+      start_period: 15s
+    security_opt: ["no-new-privileges:true"]
+    logging: *logging
+  caddy:
+    image: caddy:2.11.4
+    restart: unless-stopped
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:?Required}
+      API_DOMAIN: ${API_DOMAIN:?Required}
+      TESTER_CIDRS: ${TESTER_CIDRS:?Set approved tester CIDRs; never use 0.0.0.0/0}
+      ACME_EMAIL: ${ACME_EMAIL:?Required}
+    ports: ["80:80", "443:443"]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      proxy: { ipv4_address: "${CADDY_IP:-172.30.10.2}" }
+    depends_on:
+      frontend: { condition: service_healthy }
+    logging: *logging
+volumes:
+  platform-data:
+  caddy-data:
+  caddy-config:
+networks:
+  proxy:
+    ipam:
+      config: [{ subnet: "${PROXY_SUBNET:-172.30.10.0/24}" }]
+  database:
+    internal: true

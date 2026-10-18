@@ -1,3 +1,4 @@
+import { customerConnectionOptions, DestinationError } from '../../security/customer-destination.js';
 import pg from 'pg';
 import { CredentialEncryption } from '../../security/encryption.js';
 import type { ConnectionConfig } from '../../modules/database-connections/types.js';
@@ -46,8 +47,8 @@ export function createAuthStore(encryption: CredentialEncryption,
     try {
       const connection = context.connection;
       const config = encryption.decrypt<ConnectionConfig>(connection, `${connection.projectId}:${connection.id}`);
-      client = factory({ host: config.host, port: config.port, database: config.database, user: config.username, password: config.password,
-        ssl: config.ssl ? { rejectUnauthorized: true } : false, connectionTimeoutMillis: 5000, statement_timeout: 3000, query_timeout: 4000, application_name: 'platform-auth' });
+      client = factory(await customerConnectionOptions({ host: config.host, port: config.port, database: config.database, user: config.username, password: config.password,
+        ssl: config.ssl ? { rejectUnauthorized: true } : false, connectionTimeoutMillis: 5000, statement_timeout: 3000, query_timeout: 4000, application_name: 'platform-auth' }));
       client.on('error', () => {}); await client.connect(); await client.query('BEGIN'); transaction = true;
       await client.query('SET LOCAL search_path = pg_catalog'); await client.query("SET LOCAL lock_timeout = '1s'");
       await client.query("SET LOCAL idle_in_transaction_session_timeout = '5s'");
@@ -55,6 +56,7 @@ export function createAuthStore(encryption: CredentialEncryption,
       const result = await work(client, tables, config.schema);
       committing = true; await client.query('COMMIT'); transaction = false; return result;
     } catch (error) {
+      if (error instanceof DestinationError) throw error;
       if (committing) throw new RuntimeError(503, 'AUTH_OUTCOME_UNKNOWN', 'Authentication operation outcome could not be confirmed');
       if (transaction && client) await client.query('ROLLBACK').catch(() => {});
       if (error instanceof RuntimeError) throw error;

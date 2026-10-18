@@ -31,6 +31,7 @@ Frontend server environment:
 
 | Variable | Meaning |
 | --- | --- |
+| `PUBLIC_RUNTIME_ORIGIN` | Public runtime origin displayed by dashboard; HTTPS in hosted secure mode |
 | `BACKEND_ORIGIN` | Fixed Fastify origin, normally `http://127.0.0.1:3000`; no trailing slash, path, query, or embedded credentials |
 | `DASHBOARD_ORIGIN` | Exact canonical dashboard origin, including port; required for Host and Origin checks |
 | `DASHBOARD_COOKIE_MODE` | `local-http` only for explicit localhost HTTP; otherwise secure HTTPS cookies |

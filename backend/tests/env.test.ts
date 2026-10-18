@@ -18,7 +18,7 @@ test('reject invalid environment without echoing secrets', () => {
   for (const patch of [
     { PLATFORM_DATABASE_URL: 'https://secret.example/db' },
     { PLATFORM_DATABASE_URL: 'postgresql://localhost/' },
-    { TRUSTED_DASHBOARD_PROXY: '0.0.0.0/0' },
+    { TRUSTED_DASHBOARD_PROXY: '0.0.0.0/0' }, { TRUSTED_PROXY_IPS: '0.0.0.0/0' }, { TRUSTED_PROXY_IPS: '8.8.8.8' }, { TRUSTED_PROXY_IPS: '0.0.0.0' },
     { PORT: '0' }, { PORT: '65536' }, { PORT: '1.5' }, { PORT: '' },
     { CONNECTION_ENCRYPTION_KEY: '' }, { CONNECTION_ENCRYPTION_KEY: 'zz'.repeat(32) },
     { NODE_ENV: 'invalid' }, { HOST: ' ' },

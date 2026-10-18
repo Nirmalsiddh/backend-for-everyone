@@ -1,3 +1,4 @@
+import { createReadiness } from './database/platform-db/readiness.js';
 import { PostgresWorkflowRepository } from './modules/workflows/repository.js';
 import { PostgresAuthRepository } from './modules/project-auth/repository.js';
 import { PostgresEndpointRepository } from './modules/endpoints/repository.js';
@@ -14,11 +15,12 @@ import { PostgresConnectionRepository } from './modules/database-connections/rep
 async function main() {
   const env = loadEnv();
   const { db, pool } = createPlatformDatabase(env.databaseUrl);
-  const app = buildApp({ env, platformAuthRepository: new PostgresPlatformAuthRepository(db), projectRepository: new PostgresProjectRepository(db),
+  const readiness = createReadiness(env.databaseUrl);
+  const app = buildApp({ env, readiness: readiness.check, platformAuthRepository: new PostgresPlatformAuthRepository(db), projectRepository: new PostgresProjectRepository(db),
     connectionRepository: new PostgresConnectionRepository(db), schemaRepository: new PostgresSchemaRepository(db), endpointRepository: new PostgresEndpointRepository(db),
     apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), workflowRepository: new PostgresWorkflowRepository(db) });
   pool.on('error', () => app.log.error('Platform database pool error'));
-  app.addHook('onClose', async () => { await pool.end(); });
+  app.addHook('onClose', async () => { await readiness.close(); await pool.end(); });
 
   let closing = false;
   const shutdown = async () => {
