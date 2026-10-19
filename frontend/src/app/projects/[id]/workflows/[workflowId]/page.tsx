@@ -214,7 +214,7 @@ function Editor({
                 if (
                   saved.enabled &&
                   !confirm(
-                    'Publishing replaces this currently enabled live workflow immediately. Continue?',
+                    'This immediately replaces the workflow handling live requests. Continue?',
                   )
                 )
                   return;
@@ -237,16 +237,23 @@ function Editor({
       )}
       <button
         disabled={action.busy || !saved.publishedVersionId}
-        onClick={() =>
-          action.run(
+        onClick={() => {
+          if (
+            saved.enabled &&
+            !confirm(
+              'Calls to this workflow will stop succeeding. Disable workflow?',
+            )
+          )
+            return;
+          return action.run(
             () =>
               api<Workflow>(path, 'PATCH', {
                 expectedDraftRevision: saved.draftRevision,
                 enabled: !saved.enabled,
               }),
             setSaved,
-          )
-        }
+          );
+        }}
       >
         {saved.enabled ? 'Disable workflow' : 'Enable workflow'}
       </button>

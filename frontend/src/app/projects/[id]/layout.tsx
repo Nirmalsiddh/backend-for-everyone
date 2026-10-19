@@ -11,13 +11,13 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
         {[
           ['', 'Overview'],
           ['database', 'Database'],
-          ['schema', 'Schema'],
-          ['apis', 'APIs & policies'],
+          ['schema', 'Tables & fields'],
+          ['apis', 'APIs'],
+          ['auth', 'App authentication'],
           ['keys', 'API keys'],
-          ['auth', 'Authentication'],
-          ['workflows', 'Workflows'],
           ['docs', 'Docs'],
           ['playground', 'Playground'],
+          ['workflows', 'Workflows'],
         ].map(([path, label]) => (
           <Link key={path} href={`/projects/${id}${path ? '/' + path : ''}`}>
             {label}

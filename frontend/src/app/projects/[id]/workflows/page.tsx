@@ -22,6 +22,14 @@ export default function Workflows() {
   return (
     <>
       <h1>Workflows</h1>
+      <p>
+        Optional: combine multiple database actions and business rules into one
+        request.
+      </p>
+      <p>
+        Use workflows when one API request needs multiple database actions or
+        business rules.
+      </p>
       <State query={q}>
         {q.data?.length === 0 && (
           <p>No workflows. Create your first workflow below.</p>

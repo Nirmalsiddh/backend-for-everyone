@@ -1,4 +1,5 @@
 'use client';
+import { RuntimeErrorGuide } from '@/components/runtime-error-guide';
 import Link from 'next/link';
 import type { OpenApiDocument } from '@/lib/api-docs';
 import {
@@ -6,6 +7,8 @@ import {
   playgroundHref,
   downloadDocument,
 } from '@/lib/api-docs';
+import { OperationExamples } from './operation-examples';
+import { CredentialGuide, ApplicationLoginGuide } from './credential-guide';
 import { Json } from './ui';
 export function ApiDocs({
   document,
@@ -30,6 +33,12 @@ export function ApiDocs({
         Dashboard sign-in does not authenticate runtime calls. Credentials below
         are placeholders.
       </p>
+      <RuntimeErrorGuide />
+      <CredentialGuide />
+      <ApplicationLoginGuide />
+      {operations.length === 0 && (
+        <p>No deployed operations yet. Apply a table and enable an API.</p>
+      )}
       <button type="button" onClick={() => downloadDocument(document)}>
         Download openapi.json
       </button>
@@ -86,6 +95,10 @@ export function ApiDocs({
                     />
                   </>
                 )}
+                <OperationExamples
+                  document={document}
+                  operationId={operation.operationId}
+                />
                 <h4>Responses</h4>
                 {Object.entries(operation.responses).map(
                   ([status, response]) => (

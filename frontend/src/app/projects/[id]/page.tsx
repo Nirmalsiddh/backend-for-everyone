@@ -1,123 +1,113 @@
 'use client';
 import Link from 'next/link';
-import { useState, useEffect } from 'react';
-import { ApiError } from '@/lib/api';
 import { useParams } from 'next/navigation';
-import { useData, State, ErrorBox } from '@/components/ui';
+import { ApiError } from '@/lib/api';
+import { useData, State } from '@/components/ui';
 import type {
   Project,
   Connection,
   Table,
   Endpoint,
   Auth,
+  KeyMetadata,
   Workflow,
 } from '@/lib/contracts';
-function Summary({
-  label,
-  href,
-  query,
-  describe,
-}: {
-  label: string;
-  href: string;
-  query: { isPending: boolean; error: unknown; data?: unknown };
-  describe: (value: never) => string;
-}) {
-  return (
-    <section>
-      <h2>
-        <Link href={href}>{label}</Link>
-      </h2>
-      {query.isPending ? (
-        'Loading…'
-      ) : query.error instanceof ApiError && query.error.status === 404 ? (
-        <p>Not configured yet. Open this step to get started.</p>
-      ) : query.error ? (
-        <ErrorBox error={query.error} />
-      ) : (
-        describe(query.data as never)
-      )}
-    </section>
-  );
+import { deriveProjectSetupStatus, type Metadata } from '@/lib/project-setup';
+import { useRuntimeSuccesses } from '@/lib/project-visit';
+import { RuntimeUrl } from '@/components/runtime-url';
+import { ProjectNextAction } from '@/components/project-next-action';
+import { ProjectSetupChecklist } from '@/components/project-setup-checklist';
+function metadata<T>(
+  q: { data?: T; isPending: boolean; error: unknown },
+  missing = false,
+): Metadata<T | null> {
+  const absent =
+    missing && q.error instanceof ApiError && q.error.status === 404;
+  return {
+    data: absent ? null : q.data,
+    loading: q.isPending,
+    error: !!q.error && !absent,
+  };
 }
 export default function Overview() {
   const { id } = useParams<{ id: string }>();
-  const [runtimeOrigin, setRuntimeOrigin] = useState('');
-  useEffect(() => {
-    setRuntimeOrigin(
-      document
-        .querySelector('meta[name="runtime-origin"]')
-        ?.getAttribute('content') ?? '',
-    );
-  }, []);
   const base = `projects/${id}`;
   const p = useData<Project>(base);
   const c = useData<Connection>(base + '/database-connection');
   const t = useData<Table[]>(base + '/schema');
   const e = useData<Endpoint[]>(base + '/endpoints');
   const a = useData<Auth>(base + '/auth');
+  const k = useData<KeyMetadata[]>(base + '/api-keys');
   const w = useData<Workflow[]>(base + '/workflows');
+  const successes = useRuntimeSuccesses();
+  const status = deriveProjectSetupStatus({
+    projectId: id,
+    connection: metadata(c, true),
+    auth: metadata(a, true),
+    tables: { data: t.data, loading: t.isPending, error: !!t.error },
+    endpoints: { data: e.data, loading: e.isPending, error: !!e.error },
+    keys: { data: k.data, loading: k.isPending, error: !!k.error },
+    workflows: { data: w.data, loading: w.isPending, error: !!w.error },
+    successes,
+  });
   return (
-    <>
-      <State query={p}>
-        <h1>{p.data?.name}</h1>
-        <p>Slug: {p.data?.slug}</p>
-        <p>
-          Runtime base URL:{' '}
-          <code>
-            {runtimeOrigin}/api/{p.data?.slug}
-          </code>{' '}
-          (Fastify runtime API; the playground uses an internal dashboard relay)
-        </p>
-      </State>
-      <h2>Setup overview</h2>
+    <State query={p}>
+      <h1>{p.data?.name}</h1>
+      {p.data && <RuntimeUrl slug={p.data.slug} />}
+      <ProjectNextAction action={status.nextAction} tested={status.tested} />
+      <ProjectSetupChecklist steps={status.steps} />
+      <section>
+        <h2>Needs attention</h2>
+        {status.blockers.length ? (
+          <ul>
+            {status.blockers.map((s) => (
+              <li key={s.id}>
+                <Link href={s.href}>{s.label}</Link>: {s.detail}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No current setup blockers found in saved metadata.</p>
+        )}
+        <button
+          onClick={() => window.dispatchEvent(new Event('dashboard:refresh'))}
+        >
+          Refresh saved status
+        </button>
+      </section>
+      <section>
+        <h2>Deployed API summary</h2>
+        {e.isPending ? (
+          <p>Loading…</p>
+        ) : e.error ? (
+          <p>Could not check deployed operations.</p>
+        ) : status.readyOperations.length ? (
+          <ul>
+            {status.readyOperations.map((o) => (
+              <li key={o.id}>
+                {o.label} —{' '}
+                {o.ready ? 'Configured — test your API.' : 'Needs attention'}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No deployed operations yet. Apply a table and enable an API.</p>
+        )}
+        {status.tested && <p>Tested during this visit</p>}
+      </section>
       <p>
-        <Link href={`/${base}/database`}>Connect database</Link> →{' '}
-        <Link href={`/${base}/schema`}>Create and apply schema</Link> →{' '}
-        <Link href={`/${base}/apis`}>Enable API operations</Link>
+        <Link href={`/${base}/docs`}>
+          View Docs and copy an integration example
+        </Link>
       </p>
-      <Summary
-        label="1. Database"
-        href={`/${base}/database`}
-        query={c}
-        describe={(v: Connection) =>
-          `${v.label}: last connection check ${v.lastTestStatus} (not continuous monitoring)`
-        }
-      />
-      <Summary
-        label="2. Schema"
-        href={`/${base}/schema`}
-        query={t}
-        describe={(v: Table[]) =>
-          `${v.length} managed tables; ${v.filter((x) => x.appliedRevision !== null).length} applied`
-        }
-      />
-      <Summary
-        label="3. APIs"
-        href={`/${base}/apis`}
-        query={e}
-        describe={(v: Endpoint[]) =>
-          `${v.filter((x) => x.enabledOperations.length > 0).length} configured resources; runtime usability also depends on connection, schema and authentication readiness`
-        }
-      />
-      <Summary
-        label="4. Authentication"
-        href={`/${base}/auth`}
-        query={a}
-        describe={(v: Auth) =>
-          `${v.enabled ? 'Enabled' : 'Disabled'}; ${v.provisioningStatus}${v.blocked ? '; operator review or schema apply pending' : ''}`
-        }
-      />
-      <Summary
-        label="5. Workflows"
-        href={`/${base}/workflows`}
-        query={w}
-        describe={(v: Workflow[]) =>
-          `${v.length} workflows; ${v.filter((x) => x.enabled && x.publishedVersionId && x.readiness?.state !== 'blocked').length} published and enabled; ${v.filter((x) => x.readiness?.state === 'blocked').length} blocked`
-        }
-      />
-      <Link href={`/${base}/keys`}>Generate API key</Link> ·{' '}
-      <Link href={`/${base}/playground`}>Open playground</Link>
-    </>
+      <p>
+        <Link href={`/${base}/playground`}>Test your API</Link>
+      </p>
+      <details>
+        <summary>Optional: Workflows</summary>
+        <p>{status.optionalSteps[0].detail}</p>
+        <Link href={`/${base}/workflows`}>Explore workflows</Link>
+      </details>
+    </State>
   );
 }

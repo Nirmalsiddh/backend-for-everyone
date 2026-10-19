@@ -1,15 +1,21 @@
 'use client';
+import Link from 'next/link';
+import { ownershipWarning } from '@/lib/schema-form';
 import type { Field, Policy } from '@/lib/contracts';
 export function PolicyEditor({
   value,
   onChange,
   fields,
   authMode,
+  authReady,
+  authHref,
 }: {
   value: Policy;
   onChange: (p: Policy) => void;
   fields: Field[];
   authMode?: 'key_only' | 'authenticated';
+  authReady?: boolean;
+  authHref?: string;
 }) {
   return (
     <>
@@ -42,13 +48,24 @@ export function PolicyEditor({
       </label>
       <p className="muted">
         {value.mode === 'key_only'
-          ? 'Requires an API key. Application sessions are not accepted.'
+          ? 'Use a project API key. Application login tokens are not accepted.'
           : value.mode === 'authenticated'
-            ? 'Signed-in users may access rows without ownership filtering.'
-            : 'Row access is restricted by the selected UUID ownership field. Creates assign the current user automatically.'}
+            ? 'Any signed-in application user can access this operation.'
+            : 'Users can access rows where the ownership field matches their application account. Ownership is assigned automatically for create. For update, clients cannot transfer ownership.'}
       </p>
+      {value.mode !== 'key_only' && authReady === false && (
+        <p role="note" className="warning">
+          This access mode requires application authentication. Set up
+          authentication before this operation can be enabled.{' '}
+          <Link href={authHref ?? '#'}>Set up application authentication</Link>
+        </p>
+      )}
       {value.mode === 'owner' && (
         <>
+          <p role="note">{ownershipWarning}</p>
+          {value.allowAdmin && (
+            <p>Application admins can access all rows for this operation.</p>
+          )}
           <label>
             Owner field
             <select

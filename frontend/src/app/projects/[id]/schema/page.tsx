@@ -11,21 +11,18 @@ export default function Schema() {
   const router = useRouter();
   return (
     <>
-      <h1>Schema Builder</h1>
+      <h1>Tables & fields</h1>
       <State query={q}>
         {q.data?.length === 0 && (
-          <p>
-            No tables yet. Create your first table below, preview the change,
-            then apply it.
-          </p>
+          <p>Create your first table, or start with the Tasks example.</p>
         )}
         {q.data?.map((t) => (
           <section key={t.id}>
             <Link href={`/projects/${id}/schema/${t.id}`}>{t.name}</Link> ·
-            Draft {t.draftRevision} ·{' '}
+            Saved draft ·{' '}
             {t.appliedRevision === null
               ? 'Not applied'
-              : `Applied ${t.appliedRevision}`}
+              : 'Current database schema'}
           </section>
         ))}
       </State>

@@ -24,7 +24,7 @@ export function CapabilitySummary({
       </p>
       <p className="warning">
         {workflow.enabled
-          ? 'Publishing replaces the currently enabled live workflow immediately.'
+          ? 'This immediately replaces the workflow handling live requests.'
           : 'Publishing saves an inactive version; enable it explicitly.'}{' '}
         Workflow permissions are independent of generic CRUD permissions.
       </p>

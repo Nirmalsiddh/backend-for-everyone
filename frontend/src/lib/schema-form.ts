@@ -127,3 +127,42 @@ export function validateFields(fields: FieldForm[]) {
     return toField(f);
   });
 }
+
+export const ownershipWarning =
+  'Add the ownership UUID field before the first Apply. Existing fields cannot be changed or removed after the first apply in this version.';
+export function tasksPreset(kind: 'owned' | 'server') {
+  return {
+    name: 'tasks',
+    fields: [
+      {
+        ...emptyField(),
+        name: 'title',
+        type: 'text' as const,
+        nullable: false,
+      },
+      {
+        ...emptyField(),
+        name: 'done',
+        type: 'boolean' as const,
+        defaultKind: 'literal' as const,
+        defaultText: 'false',
+      },
+      ...(kind === 'owned'
+        ? [
+            {
+              ...emptyField(),
+              name: 'owner_id',
+              type: 'uuid' as const,
+              nullable: false,
+            },
+          ]
+        : []),
+    ],
+  };
+}
+export function mayReplacePreset(
+  dirty: boolean,
+  confirmReplace: () => boolean,
+) {
+  return !dirty || confirmReplace();
+}

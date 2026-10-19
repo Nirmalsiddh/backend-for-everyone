@@ -1,6 +1,7 @@
 'use client';
 import { useState, useEffect, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { errorGuidance } from '@/lib/runtime-guidance';
 import { api, ApiError } from '@/lib/api';
 export function useData<T>(path: string) {
   const query = useQuery({ queryKey: [path], queryFn: () => api<T>(path) });
@@ -13,16 +14,13 @@ export function useData<T>(path: string) {
   }, [path, query.refetch]);
   return query;
 }
-const errorHints: Record<number, string> = {
-  400: 'Check the request fields.',
-  401: 'Your session has expired. Sign in again.',
-  403: 'Permission or credential scope denied.',
-  404: 'Resource unavailable.',
-  429: 'Rate limit reached. Wait before trying again.',
-  503: 'Service unavailable or database state requires review.',
-  504: 'Request timed out. A write may have completed; review saved state before retrying.',
-};
-export function ErrorBox({ error }: { error: unknown }) {
+export function ErrorBox({
+  error,
+  context = 'dashboard',
+}: {
+  error: unknown;
+  context?: 'dashboard' | 'key' | 'session' | 'public';
+}) {
   if (!error) return null;
   const e = error instanceof ApiError ? error : undefined;
   return (
@@ -30,14 +28,17 @@ export function ErrorBox({ error }: { error: unknown }) {
       <strong>{e?.code ?? 'INVALID_INPUT'}</strong>:{' '}
       {error instanceof Error ? error.message : 'Request failed'}
       {e?.requestId && <small>Request ID: {e.requestId}</small>}
-      {e && errorHints[e.status] && <p>{errorHints[e.status]}</p>}
-      {e?.status === 409 && (
+      {e && <p>{errorGuidance(e.status, context)}</p>}
+      {context !== 'dashboard' && (
+        <p>If something fails, copy the request ID when contacting support.</p>
+      )}
+      {context === 'dashboard' && e?.status === 409 && (
         <p>
           Your input is preserved. Reload saved data and review before
           submitting again.
         </p>
       )}
-      {e && e.status >= 409 && (
+      {context === 'dashboard' && e && e.status >= 409 && (
         <button
           type="button"
           className="secondary"

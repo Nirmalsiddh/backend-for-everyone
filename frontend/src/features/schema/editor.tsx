@@ -6,6 +6,9 @@ import { api } from '@/lib/api';
 import type { Table, FieldType } from '@/lib/contracts';
 import {
   emptyField,
+  tasksPreset,
+  ownershipWarning,
+  mayReplacePreset,
   toForm,
   validateFields,
   type FieldForm,
@@ -21,6 +24,7 @@ export function SchemaEditor({
   table?: Table;
   onCreated?: (t: Table) => void;
 }) {
+  const [choosePreset, setChoosePreset] = useState(false);
   const [savedRevision, setSavedRevision] = useState(table?.draftRevision);
   const action = useAction({
     refresh: [path, path.split('/schema')[0] + '/schema'],
@@ -88,6 +92,54 @@ export function SchemaEditor({
         save={table ? saveForNavigation : undefined}
         discard={() => f.reset()}
       />
+      {!table && (
+        <section>
+          <button type="button" onClick={() => setChoosePreset(true)}>
+            Start with a Tasks example
+          </button>
+          {choosePreset && (
+            <fieldset>
+              <legend>Choose how Tasks will be accessed</legend>
+              <p>
+                These choices only fill the unsaved form. Save, Apply, API
+                access, and authentication remain separate actions.
+              </p>
+              {(['owned', 'server'] as const).map((kind) => (
+                <div key={kind}>
+                  <p>
+                    {kind === 'owned'
+                      ? 'Use this when signed-in users should only access their own tasks.'
+                      : 'Use this when your trusted server will call the API with a project API key.'}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        !mayReplacePreset(f.formState.isDirty, () =>
+                          confirm(
+                            'Replace your existing unsaved table edits with the Tasks example?',
+                          ),
+                        )
+                      )
+                        return;
+                      const preset = tasksPreset(kind);
+                      f.setValue('name', preset.name, { shouldDirty: true });
+                      f.setValue('fields', preset.fields, {
+                        shouldDirty: true,
+                      });
+                      setChoosePreset(false);
+                    }}
+                  >
+                    {kind === 'owned'
+                      ? 'Use user-owned tasks'
+                      : 'Use server-controlled tasks'}
+                  </button>
+                </div>
+              ))}
+            </fieldset>
+          )}
+        </section>
+      )}
       <form onSubmit={f.handleSubmit(saveValues)}>
         <label>
           Table name
@@ -97,6 +149,10 @@ export function SchemaEditor({
             disabled={table?.appliedRevision != null}
           />
         </label>
+        <p>tasks becomes /tasks in your API.</p>
+        <p className="warning" role="note">
+          {ownershipWarning}
+        </p>
         <p className="warning">
           After first apply, existing fields cannot be renamed, dropped, or
           changed in this MVP. Only new nullable fields without defaults or
@@ -106,7 +162,7 @@ export function SchemaEditor({
         </p>
         <p>
           Read-only generated field: <code>id UUID PRIMARY KEY</code>, generated
-          automatically.
+          automatically. Clients do not provide it.
         </p>
         {rows.fields.map((row, i) => {
           const locked = !!row.id && applied.has(row.id);
@@ -187,6 +243,10 @@ export function SchemaEditor({
                 />
                 Required
               </label>
+              <small>
+                Cannot be null. Without a default, provide it when creating a
+                record.
+              </small>
               <label className="check">
                 <input
                   type="checkbox"
@@ -210,6 +270,7 @@ export function SchemaEditor({
                   )}
                 </select>
               </label>
+              <small>Used when this field is omitted.</small>
               {value.defaultKind === 'literal' && (
                 <label>
                   Default value
@@ -270,20 +331,37 @@ export function SchemaEditor({
           )}
           {table.applyStatus && (
             <p role="status">
-              Latest schema operation: {table.applyStatus.status}
-              {['applying', 'outcome_unknown'].includes(
-                table.applyStatus.status,
-              )
-                ? ' — operator review required; do not retry automatically'
-                : ''}
-              {table.applyStatus.errorCode
-                ? ` (${table.applyStatus.errorCode})`
-                : ''}
+              Latest schema operation:{' '}
+              {
+                {
+                  applying: 'In progress — refresh saved status.',
+                  applied: 'Applied',
+                  failed: 'Needs attention — review the error details.',
+                  outcome_unknown:
+                    'Blocked — outcome unresolved; operator review required. Do not retry automatically.',
+                }[table.applyStatus.status]
+              }
             </p>
           )}
+          <details>
+            <summary>Advanced details</summary>
+            <p>
+              {table.applyStatus && (
+                <>
+                  Recorded operation status: {table.applyStatus.status}.{' '}
+                  {table.applyStatus.errorCode && (
+                    <>Error: {table.applyStatus.errorCode}.</>
+                  )}{' '}
+                  Migration: {table.applyStatus.migrationId}.{' '}
+                </>
+              )}
+              Saved draft revision {table.draftRevision} · Applied revision{' '}
+              {table.appliedRevision ?? 'never'}
+            </p>
+          </details>
           <p>
-            Saved draft revision {table.draftRevision} · Applied revision{' '}
-            {table.appliedRevision ?? 'never'}
+            Saved draft · Current database schema:{' '}
+            {table.appliedRevision === null ? 'Not applied' : 'Applied'}
           </p>
           <p>
             After apply, only new nullable fields without defaults or uniqueness
@@ -299,7 +377,7 @@ export function SchemaEditor({
               )
             }
           >
-            Preview SQL
+            Preview changes
           </button>
           {preview && (
             <section>
@@ -329,8 +407,15 @@ export function SchemaEditor({
               <p>
                 Review this change before applying it to the connected database.
               </p>
-              <h3>Generated SQL · revision {preview.draftRevision}</h3>
-              <pre>{preview.sql}</pre>
+              <details>
+                <summary>Advanced details: generated SQL and revision</summary>
+                <h3>Generated SQL · revision {preview.draftRevision}</h3>
+                <pre>{preview.sql}</pre>
+              </details>
+              <p>
+                Creates or changes this table in your connected PostgreSQL
+                database.
+              </p>
               <button
                 disabled={
                   action.busy ||
@@ -338,7 +423,11 @@ export function SchemaEditor({
                   preview.draftRevision !== table.draftRevision
                 }
                 onClick={() => {
-                  if (confirm('Apply this schema to your connected database?'))
+                  if (
+                    confirm(
+                      'This changes your connected database. Existing fields cannot be changed afterward in this version.',
+                    )
+                  )
                     void action.run(
                       () =>
                         api(path + '/apply', 'POST', {

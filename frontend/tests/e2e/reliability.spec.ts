@@ -1,3 +1,4 @@
+import { documentFixture } from '../api-docs-fixture';
 import { signupLogin } from './platform-account';
 import { test, expect, type Page } from '@playwright/test';
 const id = '11111111-1111-4111-8111-111111111111';
@@ -25,10 +26,14 @@ function table(name: string, id: string) {
     appliedDefinition: { definition: { name, fields } },
   };
 }
-let fixtureCookies: Awaited<ReturnType<ReturnType<Page['context']>['cookies']>> | undefined;
+let fixtureCookies:
+  Awaited<ReturnType<ReturnType<Page['context']>['cookies']>> | undefined;
 async function fixture(page: Page, workflow?: any) {
   if (fixtureCookies) await page.context().addCookies(fixtureCookies);
-  else { await signupLogin(page); fixtureCookies = await page.context().cookies(); }
+  else {
+    await signupLogin(page);
+    fixtureCookies = await page.context().cookies();
+  }
   let endpoints: any[] = [];
   let connection = {
     id: tableId,
@@ -52,6 +57,8 @@ async function fixture(page: Page, workflow?: any) {
     if (path.endsWith('/schema'))
       data = [table('products', tableId), table('orders', secondId)];
     else if (path.endsWith('/endpoints')) data = endpoints;
+    else if (path.endsWith('/openapi'))
+      data = { ...documentFixture, paths: {} };
     else if (path.endsWith('/api') && request.method() === 'PUT') {
       const body = request.postDataJSON();
       const tid = path.split('/tables/')[1].split('/')[0];
@@ -180,9 +187,8 @@ test('failed retest and failed provisioning refresh authoritative status', async
   await expect(
     page.getByRole('status').filter({ hasText: 'Authentication status:' }),
   ).toContainText('Failed');
-  await expect(
-    page.getByRole('status').filter({ hasText: 'Authentication status:' }),
-  ).toContainText('Revision 3');
+  await page.getByText('Advanced details', { exact: true }).click();
+  await expect(page.getByText(/Configuration revision: 3/)).toBeVisible();
 });
 
 async function delayedLogin(page: Page) {
@@ -405,4 +411,39 @@ test('workflow branch removal warns and moving steps flags invalid references', 
       .filter({ hasText: 'This reference is no longer available here' }),
   ).toBeVisible();
   await expect(page.getByText(/unreachable, move\/remove/)).toBeVisible();
+});
+
+test('manual Playground selection supersedes a delayed Docs handoff', async ({
+  page,
+}) => {
+  await fixture(page);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route('**/api/management/projects/*/openapi', async (route) => {
+    await gate;
+    await route
+      .fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify(documentFixture),
+      })
+      .catch(() => {});
+  });
+  await page.goto(`/projects/${id}/playground?operationId=auth_login`);
+  const endpoint = page.getByRole('combobox', {
+    name: 'Endpoint',
+    exact: true,
+  });
+  await endpoint.selectOption('auth:signup');
+  await page
+    .getByLabel('JSON request body', { exact: true })
+    .fill('{"email":"keep@example.test","password":""}');
+  release();
+  await expect(page).not.toHaveURL(/operationId=/);
+  await expect(endpoint).toHaveValue('auth:signup');
+  await expect(
+    page.getByLabel('JSON request body', { exact: true }),
+  ).toHaveValue(/keep@example.test/);
+  await expect(page.getByTestId('response-status')).toHaveCount(0);
 });

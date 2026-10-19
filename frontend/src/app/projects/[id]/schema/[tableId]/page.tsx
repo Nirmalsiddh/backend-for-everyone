@@ -11,7 +11,10 @@ export default function TablePage() {
   const [reload, setReload] = useState(0);
   return (
     <>
-      <h1>Edit table</h1>
+      <h1>Tables &amp; fields</h1>
+      <button type="button" onClick={() => void q.refetch()}>
+        Refresh saved status (keep edits)
+      </button>
       <button
         className="secondary"
         onClick={async () => {

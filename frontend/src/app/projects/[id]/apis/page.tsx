@@ -1,10 +1,12 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
 import { api } from '@/lib/api';
 import {
   operations,
+  type Auth,
   type Table,
   type Endpoint,
   type Operation,
@@ -18,6 +20,13 @@ import {
   DirtyGuard,
 } from '@/components/ui';
 import { PolicyEditor } from '@/features/apis/policy';
+const descriptions = {
+  list: 'Return multiple records.',
+  get: 'Return one record by ID.',
+  create: 'Create a new record.',
+  update: 'Change fields on one record.',
+  delete: 'Delete one record.',
+};
 const labels = {
   list: 'List',
   get: 'Get',
@@ -54,6 +63,12 @@ function Editor({
   endpoint?: Endpoint;
   projectId: string;
 }) {
+  const auth = useData<Auth>(`projects/${projectId}/auth`);
+  const authReady =
+    !auth.error &&
+    !!auth.data?.enabled &&
+    auth.data.provisioningStatus === 'ready' &&
+    !auth.data.blocked;
   const path = `projects/${projectId}/schema/tables/${table.id}/api`;
   const action = useAction({
     refresh: [`projects/${projectId}/endpoints`],
@@ -109,6 +124,7 @@ function Editor({
   return (
     <section>
       <h2>{table.name}</h2>
+      <p>Choose which operations your API should expose.</p>
       <DirtyGuard
         dirty={f.formState.isDirty}
         save={save}
@@ -149,6 +165,8 @@ function Editor({
         <fieldset>
           <legend>Apply one policy to enabled operations</legend>
           <PolicyEditor
+            authReady={authReady}
+            authHref={`/projects/${projectId}/auth`}
             value={bulk}
             onChange={setBulk}
             fields={table.appliedDefinition?.definition.fields ?? []}
@@ -171,6 +189,14 @@ function Editor({
         {operations.map((op) => (
           <fieldset key={op}>
             <legend>{labels[op]}</legend>
+            <p>{descriptions[op]}</p>
+            {endpoint?.enabledOperations.includes(op) && (
+              <Link
+                href={`/projects/${projectId}/playground?target=${encodeURIComponent(`table:${endpoint.id}:${op}`)}`}
+              >
+                Test this endpoint
+              </Link>
+            )}
             <label className="check">
               <input type="checkbox" {...f.register(`enabled.${op}`)} />
               Enable {op}
@@ -181,6 +207,8 @@ function Editor({
                 name={`policies.${op}`}
                 render={({ field }) => (
                   <PolicyEditor
+                    authReady={authReady}
+                    authHref={`/projects/${projectId}/auth`}
                     value={field.value}
                     onChange={field.onChange}
                     fields={table.appliedDefinition?.definition.fields ?? []}
@@ -219,10 +247,7 @@ export default function Apis() {
       <State query={t}>
         <State query={e}>
           {!t.data?.some((t) => t.appliedRevision !== null) && (
-            <p>
-              No API configured. Apply your first table, then enable API
-              operations.
-            </p>
+            <p>Apply a table first.</p>
           )}
           {t.data
             ?.filter((t) => t.appliedRevision !== null)

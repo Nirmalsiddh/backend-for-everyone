@@ -45,6 +45,9 @@ export default function Database() {
   return (
     <>
       <h1>Database connection</h1>
+      <p>
+        Connect the PostgreSQL database that will hold your application data.
+      </p>
       <DirtyGuard dirty={formState.isDirty} />
       <p>
         A connection check verifies connectivity and schema existence. It does
@@ -83,9 +86,7 @@ export default function Database() {
           </button>
         </section>
       ) : absent ? (
-        <p>
-          No database connected. Connect a disposable PostgreSQL database below.
-        </p>
+        <p>Connect PostgreSQL below.</p>
       ) : (
         <ErrorBox error={q.error} />
       )}
@@ -99,6 +100,13 @@ export default function Database() {
           autoComplete="off"
           onSubmit={handleSubmit(async (values) => {
             try {
+              if (
+                q.data &&
+                !confirm(
+                  'This changes the database used by the project. Applied schemas cannot be rebound in this version.',
+                )
+              )
+                return;
               const saved = await action.run(() =>
                 api(path, q.data ? 'PUT' : 'POST', schema.parse(values)),
               );
@@ -118,7 +126,25 @@ export default function Database() {
               (name) => (
                 <label key={name}>
                   {name[0].toUpperCase() + name.slice(1)}
-                  <input {...register(name)} required autoComplete="off" />
+                  <input
+                    {...register(name)}
+                    aria-label={name[0].toUpperCase() + name.slice(1)}
+                    aria-describedby={`connection-${name}-help`}
+                    required
+                    autoComplete="off"
+                  />
+                  <small id={`connection-${name}-help`}>
+                    {
+                      {
+                        label: 'A name for this connection.',
+                        host: 'PostgreSQL server hostname.',
+                        database: 'Database name.',
+                        username: 'Dedicated PostgreSQL credentials.',
+                        schema:
+                          'Existing PostgreSQL schema where application tables are managed.',
+                      }[name]
+                    }
+                  </small>
                 </label>
               ),
             )}
@@ -146,6 +172,10 @@ export default function Database() {
             <input type="checkbox" {...register('ssl')} />
             Use SSL with certificate verification
           </label>
+          <p>
+            TLS provides an encrypted, certificate-verified database connection.
+            Port is usually 5432. Use dedicated PostgreSQL credentials.
+          </p>
           <p>Disabling SSL means the database transport is unencrypted.</p>
           <button
             disabled={

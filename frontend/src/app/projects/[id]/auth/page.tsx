@@ -1,4 +1,8 @@
 'use client';
+import {
+  CredentialGuide,
+  ApplicationLoginGuide,
+} from '@/components/credential-guide';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -13,8 +17,8 @@ import {
   DirtyGuard,
 } from '@/components/ui';
 const statusLabels: Record<string, string> = {
-  unprovisioned: 'Configured, not provisioned',
-  provisioning: 'Provisioning',
+  unprovisioned: 'Configured — create authentication tables',
+  provisioning: 'Creating authentication tables',
   ready: 'Ready',
   failed: 'Failed — review the error and retry explicitly',
   outcome_unknown: 'Review required — do not retry automatically',
@@ -56,9 +60,8 @@ function Editor({
       if (
         data?.enabled &&
         !v.enabled &&
-        protectedPolicies &&
         !confirm(
-          'Disabling authentication prevents signed-in users from using protected endpoint policies. Continue?',
+          'Application login and protected API access will stop working. Continue?',
         )
       )
         return;
@@ -85,23 +88,30 @@ function Editor({
         discard={() => f.reset()}
       />
       <ol>
-        <li>Enable authentication</li>
+        <li>Enable application login</li>
+        <li>Optionally allow signup</li>
         <li>Save configuration</li>
         <li>Create authentication tables</li>
-        <li>Verify authentication is ready</li>
-        <li>Configure endpoint policies</li>
+        <li>Choose endpoint access</li>
+        <li>Test signup/login in Playground</li>
       </ol>
       <p role="status">
         Authentication status:{' '}
         {data
           ? (statusLabels[data.provisioningStatus] ?? data.provisioningStatus)
           : 'Not configured'}{' '}
-        · {data?.enabled ? 'Enabled' : 'Disabled'} · Revision{' '}
-        {data?.revision ?? 0}
+        · {data?.enabled ? 'Enabled' : 'Disabled'}
         {data?.blocked
           ? ' · Schema operation pending or operator review required'
           : ''}
       </p>
+      <details>
+        <summary>Advanced details</summary>
+        <p>
+          Configuration revision: {data?.revision ?? 0}. Recorded status:{' '}
+          {data?.provisioningStatus ?? 'Not configured'}.
+        </p>
+      </details>
       {data?.revision !== undefined &&
         data.revision !== revision &&
         f.formState.isDirty && (
@@ -118,11 +128,11 @@ function Editor({
       >
         <label className="check">
           <input type="checkbox" {...f.register('enabled')} />
-          Enable project auth
+          Enable application login
         </label>
         <label className="check">
           <input type="checkbox" {...f.register('signupEnabled')} />
-          Enable signup
+          Allow signup (optional)
         </label>
         <label>
           Session lifetime (seconds)
@@ -179,10 +189,13 @@ export default function AuthPage() {
   const missing = q.error instanceof ApiError && q.error.status === 404;
   return (
     <>
-      <h1>Project authentication</h1>
+      <h1>Application authentication</h1>
+      <p>Add application signup/login when your API needs signed-in users.</p>
+      <CredentialGuide />
+      <ApplicationLoginGuide />
       <p>
-        Application-user authentication is separate from platform-user
-        dashboard access. This MVP has no email verification or password reset.
+        Application-user authentication is separate from platform-user dashboard
+        access. This MVP has no email verification or password reset.
       </p>
       <button className="secondary" onClick={() => void q.refetch()}>
         Refresh status (keep edits)
@@ -217,9 +230,11 @@ export default function AuthPage() {
         <ErrorBox error={q.error} />
       )}
       <p>
-        <Link href={`/projects/${id}/apis`}>Configure endpoint policies</Link>
+        <Link href={`/projects/${id}/apis`}>Choose endpoint access</Link> ·{' '}
+        <Link href={`/projects/${id}/playground`}>Test signup/login</Link>
       </p>
-      <section>
+      <details>
+        <summary>Advanced: test user role administration</summary>
         <h2>Test user role</h2>
         <p>
           Use a known application-user UUID from the playground. Role changes
@@ -227,7 +242,7 @@ export default function AuthPage() {
           each operation.
         </p>
         <Role path={path} />
-      </section>
+      </details>
     </>
   );
 }

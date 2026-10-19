@@ -50,9 +50,7 @@ export default function Projects() {
   return (
     <main>
       <h1>Projects</h1>
-      <p className="muted">
-        Create and manage your projects.
-      </p>
+      <p className="muted">Create and manage your projects.</p>
       <section>
         <h2>Create project</h2>
         <DirtyGuard dirty={formState.isDirty} />
@@ -89,7 +87,9 @@ export default function Projects() {
       </section>
       <State query={query}>
         {query.data?.items.length === 0 ? (
-          <p>No projects yet.</p>
+          <p>
+            Create your first project, connect PostgreSQL, then build an API.
+          </p>
         ) : (
           <table>
             <thead>

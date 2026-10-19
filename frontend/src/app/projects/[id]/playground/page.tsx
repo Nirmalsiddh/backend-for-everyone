@@ -1,4 +1,12 @@
 'use client';
+import { RuntimeErrorGuide } from '@/components/runtime-error-guide';
+import { recordRuntimeSuccess } from '@/lib/project-visit';
+import { OperationExamples } from '@/components/operation-examples';
+import { docOperations } from '@/lib/api-docs';
+import {
+  CredentialGuide,
+  ApplicationLoginGuide,
+} from '@/components/credential-guide';
 import { useRef, useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -58,6 +66,7 @@ function Playground() {
         ?.getAttribute('content') ?? '',
     );
   }, []);
+  const docs = useData<OpenApiDocument>(`projects/${id}/openapi`);
   const p = useData<Project>(`projects/${id}`);
   const e = useData<Endpoint[]>(`projects/${id}/endpoints`);
   const w = useData<Workflow[]>(`projects/${id}/workflows`);
@@ -98,15 +107,14 @@ function Playground() {
         list: op === 'list',
       })),
     ),
-    ...['signup', 'login', 'me', 'logout']
-      .map((action) => ({
-        id: `auth:${action}`,
-        label: `${action === 'me' ? 'GET' : 'POST'} auth/${action}`,
-        resource: `auth/${action}`,
-        method: action === 'me' ? 'GET' : 'POST',
-        record: false,
-        list: false,
-      })),
+    ...['signup', 'login', 'me', 'logout'].map((action) => ({
+      id: `auth:${action}`,
+      label: `${action === 'me' ? 'GET' : 'POST'} auth/${action}`,
+      resource: `auth/${action}`,
+      method: action === 'me' ? 'GET' : 'POST',
+      record: false,
+      list: false,
+    })),
     ...(w.data ?? [])
       .filter(
         (w) =>
@@ -139,6 +147,25 @@ function Playground() {
   const selectedWorkflow = w.data?.find(
     (w) => values.target === `workflow:${w.id}`,
   );
+  const deployedOperation =
+    docs.data &&
+    docOperations(docs.data).find(
+      (o) =>
+        target &&
+        o.method.toUpperCase() === target.method &&
+        o.path === `/${target.resource}${target.record ? '/{id}' : ''}`,
+    );
+  const runtimeContext = target?.resource.startsWith('auth/')
+    ? ['auth/login', 'auth/signup'].includes(target.resource)
+      ? 'public'
+      : 'session'
+    : selectedWorkflow
+      ? selectedWorkflow.publishedDefinition?.auth === 'key_only'
+        ? 'key'
+        : 'session'
+      : policy.mode === 'key_only'
+        ? 'key'
+        : 'session';
   const handoff = search.get('operationId');
   const handled = useRef('');
   useEffect(() => {
@@ -154,7 +181,7 @@ function Playground() {
     let cancelled = false;
     void api<OpenApiDocument>(`projects/${id}/openapi`)
       .then((doc) => {
-        if (cancelled) return;
+        if (cancelled || handled.current === handoff) return;
         const match = operationById(doc, handoff);
         const choice =
           match &&
@@ -191,7 +218,7 @@ function Playground() {
         setResult(null);
       })
       .catch((error: unknown) => {
-        if (!cancelled) {
+        if (!cancelled && handled.current !== handoff) {
           handled.current = handoff;
           f.setValue('target', '');
           setError(error);
@@ -246,6 +273,7 @@ function Playground() {
     setBusy(false);
   }
   function select(value: string) {
+    handled.current = handoff ?? '';
     invalidate();
     f.setValue('target', value);
     const preset = value === 'auth:signup' || value === 'auth:login';
@@ -262,12 +290,16 @@ function Playground() {
     setResult(null);
     setError(null);
     const url = new URL(window.location.href);
+    url.searchParams.delete('operationId');
     url.searchParams.set('target', value);
     window.history.replaceState(null, '', url);
   }
   return (
     <>
       <h1>API playground</h1>
+      <RuntimeErrorGuide />
+      <CredentialGuide />
+      <ApplicationLoginGuide />
       <p>
         Requests operate on your connected database. Credentials remain in this
         page’s memory only.
@@ -278,10 +310,7 @@ function Playground() {
           {runtimeOrigin}/api/{p.data?.slug}/{target?.resource ?? '…'}
         </code>
       </p>
-      <p>
-        Dashboard relay: internal testing transport. It does not test your
-        application's CORS settings.
-      </p>
+      <p>Playground requests do not test your application's CORS settings.</p>
       {target && (
         <section>
           <p>
@@ -446,6 +475,12 @@ function Playground() {
                     f.setValue('credentialMode', 'none');
                     setSession(null);
                   }
+                  if (deployedOperation && !target.id.startsWith('auth:'))
+                    recordRuntimeSuccess(
+                      id,
+                      deployedOperation.operation.operationId,
+                      response.status,
+                    );
                   setResult({
                     status: response.status,
                     body: data,
@@ -653,7 +688,13 @@ function Playground() {
         Stopping the browser wait does not undo a submitted write. Review saved
         state before retrying.
       </p>
-      <ErrorBox error={error} />
+      <ErrorBox error={error} context={runtimeContext} />
+      {docs.data && deployedOperation && (
+        <OperationExamples
+          document={docs.data}
+          operationId={deployedOperation.operation.operationId}
+        />
+      )}
       {result && (
         <section>
           <h2>Response</h2>

@@ -1,4 +1,5 @@
 'use client';
+import { CredentialGuide } from '@/components/credential-guide';
 import { SecretDialog } from '@/components/secret-dialog';
 import { DirtyGuard } from '@/components/ui';
 import { useState } from 'react';
@@ -23,6 +24,12 @@ export default function Keys() {
   return (
     <>
       <h1>API keys</h1>
+      <CredentialGuide />
+      <p>API keys are project-scoped secrets.</p>
+      <p>
+        Keep API keys in trusted server code. Browser and mobile application
+        bundles cannot keep embedded API keys secret.
+      </p>
       <DirtyGuard dirty={formState.isDirty} />
       <form
         onSubmit={handleSubmit((v) =>
@@ -43,8 +50,8 @@ export default function Keys() {
         <label>
           Scope
           <select {...register('scope')}>
-            <option value="read">read</option>
-            <option value="read_write">read_write</option>
+            <option value="read">Read only</option>
+            <option value="read_write">Read and write</option>
           </select>
         </label>
         <button disabled={action.busy || !!secret}>Generate key</button>
@@ -53,7 +60,10 @@ export default function Keys() {
       <ActionState action={action} />
       <State query={q}>
         {q.data?.length === 0 ? (
-          <p>No keys yet.</p>
+          <p>
+            Create a key only for API-key-protected operations. Signed-in-user
+            APIs do not need one.
+          </p>
         ) : (
           <table>
             <thead>
@@ -70,13 +80,17 @@ export default function Keys() {
                 <tr key={k.id}>
                   <td>{k.name}</td>
                   <td>{k.keyPrefix}</td>
-                  <td>{k.scope}</td>
+                  <td>{k.scope === 'read' ? 'Read only' : 'Read and write'}</td>
                   <td>{k.revokedAt ? 'Revoked' : 'Active'}</td>
                   <td>
                     <button
                       disabled={!!k.revokedAt || action.busy}
                       onClick={() => {
-                        if (confirm('Revoke this API key?'))
+                        if (
+                          confirm(
+                            'Applications using this key will immediately lose access. Revoke key?',
+                          )
+                        )
                           void action.run(
                             () => api(path + '/' + k.id, 'DELETE'),
                             undefined,
