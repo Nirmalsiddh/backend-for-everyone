@@ -1,4 +1,5 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
 import {
   CredentialGuide,
   ApplicationLoginGuide,
@@ -81,7 +82,7 @@ function Editor({
     return success;
   }
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <DirtyGuard
         dirty={f.formState.isDirty}
         save={save}
@@ -177,7 +178,7 @@ function Editor({
         Create authentication tables
       </button>
       <ActionState action={action} />
-    </>
+    </MutationBoundary>
   );
 }
 export default function AuthPage() {
@@ -252,7 +253,7 @@ function Role({ path }: { path: string }) {
     defaultValues: { role: 'user' },
   });
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <DirtyGuard dirty={f.formState.isDirty} />
       <form
         onSubmit={f.handleSubmit(async (v) => {
@@ -282,6 +283,6 @@ function Role({ path }: { path: string }) {
         <button disabled={action.busy}>Set role</button>
         <ActionState action={action} />
       </form>
-    </>
+    </MutationBoundary>
   );
 }

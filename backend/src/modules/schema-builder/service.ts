@@ -101,18 +101,22 @@ export class SchemaService {
     );
     let catalog: unknown;
     try {
-      catalog = await this.executor(config, plan, table.appliedDefinition);
+      catalog = await this.executor(
+        config,
+        { ...plan, receipt: { projectId, operationId: migrationId } },
+        table.appliedDefinition,
+      );
     } catch (error) {
       const safe =
         error instanceof DestinationError
           ? new SchemaError(error.statusCode, error.code, error.message)
           : error instanceof SchemaError
-          ? error
-          : new SchemaError(
-              422,
-              'SCHEMA_APPLY_FAILED',
-              'Customer schema operation failed',
-            );
+            ? error
+            : new SchemaError(
+                422,
+                'SCHEMA_APPLY_FAILED',
+                'Customer schema operation failed',
+              );
       const status =
         safe.code === 'SCHEMA_OUTCOME_UNKNOWN' ? 'outcome_unknown' : 'failed';
       await this.repository.finish(

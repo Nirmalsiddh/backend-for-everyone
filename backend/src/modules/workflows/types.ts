@@ -105,6 +105,7 @@ export interface WorkflowEndpoint {
   publishedDefinition?: WorkflowDefinition | null;
   publishedDependencies?: Dependency[] | null;
   managementBlocked?: boolean;
+  authBlocked?: boolean;
   draftDefinition: WorkflowDefinition;
   draftRevision: number;
   publishedVersionId: string | null;

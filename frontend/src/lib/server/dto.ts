@@ -1,4 +1,4 @@
-const projectKeys = ['id', 'name', 'slug', 'createdAt'];
+const projectKeys = ['id', 'name', 'slug', 'runtimeState', 'createdAt'];
 const tableKeys = [
   'id',
   'name',

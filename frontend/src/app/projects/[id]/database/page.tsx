@@ -1,4 +1,6 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
+import { CredentialUpdate } from '@/components/credential-update';
 import { useParams } from 'next/navigation';
 import { useForm } from 'react-hook-form';
 import { z } from 'zod';
@@ -43,7 +45,7 @@ export default function Database() {
   );
   const absent = q.error instanceof ApiError && q.error.status === 404;
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <h1>Database connection</h1>
       <p>
         Connect the PostgreSQL database that will hold your application data.
@@ -90,6 +92,7 @@ export default function Database() {
       ) : (
         <ErrorBox error={q.error} />
       )}
+      {q.data && <CredentialUpdate connection={q.data} path={path} />}
       <section>
         <h2>{q.data ? 'Replace connection' : 'Connect PostgreSQL'}</h2>
         <p>
@@ -190,6 +193,6 @@ export default function Database() {
         </form>
       </section>
       <ActionState action={action} />
-    </>
+    </MutationBoundary>
   );
 }

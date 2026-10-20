@@ -302,8 +302,9 @@ test('rendered runtime errors and copy controls retain accessible context', asyn
   const { renderToStaticMarkup } = await import('react-dom/server');
   const { ErrorBox } = await import('../src/components/ui');
   const { ApiError } = await import('../src/lib/api');
-  const { OperationExamples } =
-    await import('../src/components/operation-examples');
+  const { OperationExamples } = await import(
+    '../src/components/operation-examples'
+  );
   const error = new ApiError(
     401,
     'UNAUTHORIZED',
@@ -352,5 +353,52 @@ test('policy prerequisites are shown only when readiness was checked', async () 
       }),
     ),
     /Set up authentication before/,
+  );
+});
+
+test('empty PATCH and a blocked deployed workflow outrank historical request success', () => {
+  const i = configured();
+  i.keys.data = [{ ...key, scope: 'read_write' }];
+  i.endpoints.data = [{ ...endpoint, enabledOperations: ['update'] }];
+  const successes = [
+    {
+      projectId: 'p',
+      operationId: 'crud_tasks_update',
+      success: true as const,
+    },
+  ];
+  let status = derive({ ...i, successes });
+  assert.equal(status.currentReady, false);
+  assert.match(status.nextAction.label, /no writable fields/);
+  assert.match(status.blockers[0].detail, /no writable fields/);
+  i.endpoints.data = [endpoint];
+  const definition = { auth: 'key_only' as const, input: {}, steps: [] };
+  i.workflows.data = [
+    {
+      id: 'w',
+      path: 'stale-flow',
+      enabled: true,
+      draftRevision: 1,
+      draftDefinition: definition,
+      publishedDefinition: definition,
+      publishedVersionId: 'v',
+      readiness: { state: 'blocked', reasons: ['Applied schema changed'] },
+    },
+  ];
+  status = derive({
+    ...i,
+    successes: [{ ...successes[0], operationId: 'crud_tasks_list' }],
+  });
+  assert.equal(status.tested, true);
+  assert.equal(status.currentReady, false);
+  assert.equal(
+    status.readyOperations.find((o) => o.id === 'crud_tasks_list')?.ready,
+    true,
+  );
+  assert.match(status.nextAction.label, /Republish or disable stale-flow/);
+  assert.equal(status.nextAction.href, '/projects/p/workflows/w');
+  assert.match(
+    status.blockers.find((s) => s.id === 'workflows')!.detail,
+    /stale-flow/,
   );
 });

@@ -211,3 +211,11 @@ dialog button {
 fieldset:disabled {
   opacity: 0.75;
 }
+
+.mutation-boundary {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  min-width: 0;
+}

@@ -1,3 +1,4 @@
+import { inspectCredentials } from '../../database/customer-db/credential-check.js';
 import { randomUUID } from 'node:crypto';
 import type { ProjectService } from '../projects/service.js';
 import { CredentialEncryption } from '../../security/encryption.js';
@@ -13,6 +14,7 @@ import type {
 function publicMetadata(record: ConnectionRecord) {
   return {
     id: record.id,
+    revision: record.revision ?? 1,
     projectId: record.projectId,
     label: record.label,
     lastTestStatus: record.lastTestStatus,
@@ -55,6 +57,55 @@ export class ConnectionService {
     return record;
   }
 
+  async updateCredentials(
+    projectId: string,
+    ownerId: string,
+    input: {
+      expectedRevision: number;
+      username: string;
+      password: string;
+      ssl: boolean;
+    },
+  ) {
+    const current = await this.required(projectId, ownerId);
+    if ((current.revision ?? 1) !== input.expectedRevision) throw changed();
+    if (
+      !this.repository.credentialRequirements ||
+      !this.repository.updateCredentials
+    )
+      throw new ConnectionError(
+        503,
+        'CREDENTIAL_UPDATE_UNAVAILABLE',
+        'Credential update is unavailable',
+      );
+    const previous = this.encryption.decrypt<ConnectionConfig>(
+      current,
+      `${projectId}:${current.id}`,
+    );
+    const candidate = {
+      ...previous,
+      username: input.username,
+      password: input.password,
+      ssl: input.ssl,
+    };
+    const snapshot = await this.repository.credentialRequirements(
+      projectId,
+      ownerId,
+    );
+    await inspectCredentials(candidate, snapshot.requirements);
+    const saved = await this.repository.updateCredentials(
+      {
+        ...current,
+        ...this.encryption.encrypt(candidate, `${projectId}:${current.id}`),
+        lastTestedAt: new Date(),
+      },
+      ownerId,
+      input.expectedRevision,
+      snapshot.fingerprint,
+    );
+    if (!saved) throw changed();
+    return this.get(projectId, ownerId);
+  }
   async get(projectId: string, ownerId: string) {
     const record = await this.required(projectId, ownerId);
     const config = this.encryption.decrypt<ConnectionConfig>(

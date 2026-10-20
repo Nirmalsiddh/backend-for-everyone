@@ -54,7 +54,27 @@ export default function Overview() {
     <State query={p}>
       <h1>{p.data?.name}</h1>
       {p.data && <RuntimeUrl slug={p.data.slug} />}
-      <ProjectNextAction action={status.nextAction} tested={status.tested} />
+      {p.data?.runtimeState === 'suspended' && (
+        <p role="alert" id="runtime-suspension">
+          Project runtime is suspended. Dashboard management remains available.
+          Contact the operator to review and resume.
+        </p>
+      )}
+      <ProjectNextAction
+        action={
+          p.data?.runtimeState === 'suspended'
+            ? {
+                label: 'Contact the operator to review runtime suspension',
+                href: '#runtime-suspension',
+              }
+            : status.nextAction
+        }
+        tested={
+          status.tested &&
+          status.currentReady &&
+          p.data?.runtimeState !== 'suspended'
+        }
+      />
       <ProjectSetupChecklist steps={status.steps} />
       <section>
         <h2>Needs attention</h2>
@@ -86,7 +106,11 @@ export default function Overview() {
             {status.readyOperations.map((o) => (
               <li key={o.id}>
                 {o.label} —{' '}
-                {o.ready ? 'Configured — test your API.' : 'Needs attention'}
+                {o.noWritableFields
+                  ? 'This update operation currently has no writable fields.'
+                  : o.ready
+                    ? 'Configured — test your API.'
+                    : 'Needs attention'}
               </li>
             ))}
           </ul>

@@ -55,14 +55,27 @@ export function deriveProjectSetupStatus(input: {
     !input.auth.data.blocked;
   const connectionReady =
     !!c && c.lastTestStatus === 'success' && !unknown(input.connection);
+  const globalSchemaBlock = !!unresolved || !!running || unknown(input.tables);
   const configured = (input.endpoints.data ?? []).flatMap((ep) =>
     ep.enabledOperations.map((op) => ({
       id: `crud_${ep.resourceName}_${op}`,
       label: `${ep.resourceName} ${op}`,
       mode: ep.policies?.[op]?.mode ?? 'key_only',
       writes: !['get', 'list'].includes(op),
+      noWritableFields:
+        op === 'update' &&
+        !(
+          applied.find((t) => t.id === ep.tableId)?.appliedDefinition
+            ?.definition.fields ?? []
+        ).some(
+          (f) =>
+            !Object.values(ep.policies ?? {}).some(
+              (p) => p?.mode === 'owner' && p.ownerFieldId === f.id,
+            ),
+        ),
       schemaReady: applied.some(
         (t) =>
+          !globalSchemaBlock &&
           t.id === ep.tableId &&
           !['outcome_unknown', 'applying', 'failed'].includes(
             t.applyStatus?.status ?? '',
@@ -76,6 +89,7 @@ export function deriveProjectSetupStatus(input: {
       id: `workflow_${w.path.replaceAll('-', '_')}`,
       label: w.path,
       mode: w.publishedDefinition!.auth,
+      noWritableFields: false,
       writes: workflowWrites(w.publishedDefinition!.steps),
       schemaReady:
         w.readiness?.state === 'enabled' && !unknown(input.workflows),
@@ -97,6 +111,8 @@ export function deriveProjectSetupStatus(input: {
     ...o,
     ready:
       connectionReady &&
+      !globalSchemaBlock &&
+      !o.noWritableFields &&
       o.schemaReady &&
       !unknown(input.tables) &&
       !unknown(input.endpoints) &&
@@ -169,12 +185,16 @@ export function deriveProjectSetupStatus(input: {
     'api',
     'Configure API operations',
     input.endpoints,
-    configured.some((o) => o.schemaReady)
-      ? 'Ready'
-      : applied.length
-        ? 'Not configured'
-        : 'Blocked',
-    'Enable operations on an applied table. Readiness is assessed separately for every operation.',
+    configured.some((o) => o.noWritableFields)
+      ? 'Needs attention'
+      : configured.some((o) => o.schemaReady)
+        ? 'Ready'
+        : applied.length
+          ? 'Not configured'
+          : 'Blocked',
+    configured.some((o) => o.noWritableFields)
+      ? 'This update operation currently has no writable fields. Review API configuration.'
+      : 'Enable operations on an applied table. Readiness is assessed separately for every operation.',
     '/apis',
   );
   step(
@@ -212,14 +232,25 @@ export function deriveProjectSetupStatus(input: {
         : 'Configure a runtime operation before testing.',
     href: base + '/playground',
   });
+  const blockedWorkflow = input.workflows.data?.find(
+    (w) =>
+      w.enabled && w.publishedVersionId && w.readiness?.state === 'blocked',
+  );
   const optionalSteps: SetupStep[] = [
     {
       id: 'workflows',
       label: 'Workflows',
-      status: unknown(input.workflows) ? 'Could not check' : 'Optional',
-      detail:
-        'Use workflows when one API request needs multiple database actions or business rules.',
-      href: base + '/workflows',
+      status: unknown(input.workflows)
+        ? 'Could not check'
+        : blockedWorkflow
+          ? 'Needs attention'
+          : 'Optional',
+      detail: blockedWorkflow
+        ? `Workflow ${blockedWorkflow.path}: ${blockedWorkflow.readiness?.reasons.join('. ')} Republish or disable this workflow.`
+        : 'Use workflows when one API request needs multiple database actions or business rules.',
+      href:
+        base +
+        (blockedWorkflow ? `/workflows/${blockedWorkflow.id}` : '/workflows'),
     },
   ];
   let nextAction: SetupAction;
@@ -265,6 +296,16 @@ export function deriveProjectSetupStatus(input: {
   else if (needsKey && unknown(input.keys))
     nextAction = action('Check API-key metadata', '/keys');
   else if (missingKey) nextAction = action('Create an API key', '/keys');
+  else if (configured.some((o) => o.noWritableFields))
+    nextAction = action(
+      'Review update operations with no writable fields',
+      '/apis',
+    );
+  else if (blockedWorkflow)
+    nextAction = action(
+      `Republish or disable ${blockedWorkflow.path}`,
+      `/workflows/${blockedWorkflow.id}`,
+    );
   else if (!tested)
     nextAction = action(
       `Test ${readyOperations.find((o) => o.ready)?.label ?? 'your API'} in Playground`,
@@ -275,11 +316,19 @@ export function deriveProjectSetupStatus(input: {
   return {
     steps,
     nextAction,
-    blockers: steps.filter((s) =>
+    blockers: [...steps, ...optionalSteps].filter((s) =>
       ['Blocked', 'Needs attention', 'Could not check'].includes(s.status),
     ),
     readyOperations,
     optionalSteps,
     tested,
+    currentReady:
+      readyOperations.some((o) => o.ready) &&
+      ![...steps, ...optionalSteps].some(
+        (s) =>
+          ['Blocked', 'Needs attention', 'Could not check'].includes(
+            s.status,
+          ) && s.id !== 'test',
+      ),
   };
 }

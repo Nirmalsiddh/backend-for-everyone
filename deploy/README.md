@@ -1,5 +1,7 @@
 # One-server private alpha
 
+For current credential recovery, reconciliation, suspension, restore containment, encryption maintenance, limits, and the fail-closed deployment gate, follow [RECOVERY.md](RECOVERY.md).
+
 One backend instance, one Next.js instance, Caddy, and PostgreSQL 18. This is deployment tooling, not a high-availability system. Only Caddy publishes TCP 80/443. Backend and frontend listen on container interfaces with no published ports. PostgreSQL has an internal network and a persistent named volume. Never use `docker compose down --volumes` on a deployment you intend to keep.
 
 ## Prerequisites and DNS
@@ -12,7 +14,7 @@ Use SSH keys, disable password and direct root SSH login after verifying alterna
 
 ## Secrets and release images
 
-Copy `deploy/env.example` to `/etc/private-alpha/deploy.env` outside Git. Set mode 0600 and restrict its parent directory. Replace all placeholders. Generate distinct hexadecimal passwords (URL-safe without extra escaping) and a 64-character hex connection encryption key. Do not pass credentials as shell arguments, commit env files, use NEXT_PUBLIC_ secrets, or put secrets in Docker build arguments.
+Copy `deploy/env.example` to `/etc/private-alpha/deploy.env` outside Git. Set mode 0600 and restrict its parent directory. Replace all placeholders. Generate distinct hexadecimal passwords (URL-safe without extra escaping) and a 64-character hex connection encryption key. Do not pass credentials as shell arguments, commit env files, use NEXT*PUBLIC* secrets, or put secrets in Docker build arguments.
 
 The three database roles are initialized only on a fresh volume:
 
@@ -36,13 +38,13 @@ Caddy accepts only configured domains. The dashboard domain has an operator-main
 
 Caddy overwrites X-Real-IP and X-Forwarded-For from its connection peer and removes Forwarded. Next.js reads only the configured overwritten X-Real-IP for auth forwarding and creates a fresh X-Forwarded-For. Fastify trusts forwarding only from the exact configured Caddy/Next.js source addresses. No unrestricted trustProxy or public forwarding chains are accepted. Internal network membership and Docker administrator access are part of the trust boundary.
 
-On app.example.com all requests route to Next.js after the IP check. On api.example.com only /api/* routes to Fastify; /internal, /health and all other paths return 404. Internal /internal calls use http://backend:3000. The public runtime origin is independently https://api.example.com. The API domain remains publicly reachable with runtime credentials/policies enforced by Fastify.
+On app.example.com all requests route to Next.js after the IP check. On api.example.com only /api/\* routes to Fastify; /internal, /health and all other paths return 404. Internal /internal calls use http://backend:3000. The public runtime origin is independently https://api.example.com. The API domain remains publicly reachable with runtime credentials/policies enforced by Fastify.
 
 ## HTTPS, cookies, headers and CORS
 
 Caddy obtains/renews certificates and redirects HTTP to HTTPS. Persist caddy-data and caddy-config. DASHBOARD_ORIGIN must be the exact HTTPS app origin; BACKEND_ORIGIN is private HTTP; DASHBOARD_COOKIE_MODE=secure; PUBLIC_RUNTIME_ORIGIN is the HTTPS API origin. Compose supplies these from the domain settings. Do not use local-http in hosted deployment.
 
-Platform cookie: __Host-platform_session; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400; no Domain. The proxy preserves the canonical Host. Dashboard mutations reject missing/null/malformed/hostile Origin and cross-site fetch signals; same-site cookies alone are not the CSRF control. Forwarded host/protocol cannot downgrade cookies. The browser never receives session tokens in readable JSON/storage.
+Platform cookie: \_\_Host-platform_session; HttpOnly; Secure; SameSite=Lax; Path=/; Max-Age=86400; no Domain. The proxy preserves the canonical Host. Dashboard mutations reject missing/null/malformed/hostile Origin and cross-site fetch signals; same-site cookies alone are not the CSRF control. Forwarded host/protocol cannot downgrade cookies. The browser never receives session tokens in readable JSON/storage.
 
 Dashboard headers include nosniff, strict-origin-when-cross-origin, DENY and CSP frame-ancestors 'none'. HSTS starts at 86400 seconds without includeSubDomains/preload. Do not enable HSTS for local plain HTTP. Broader CSP is deferred to avoid breaking Next.js.
 
@@ -66,7 +68,7 @@ export BACKUP_DIR=/var/backups/private-alpha
 ./deploy/deploy.sh
 ```
 
-The script uses a host flock, validates Compose, pulls release images, starts/waits for PostgreSQL, backs up an existing schema, runs one migration container, then starts/waits for backend/frontend/Caddy. The migration runner also takes a PostgreSQL advisory lock, so concurrent manual migration jobs serialize. No application startup performs migrations.
+The script uses a host flock, validates Compose, pulls release images, starts/waits for PostgreSQL, backs up an existing schema, runs one migration container, then starts matching services behind maintenance and runs the authenticated smoke gate before reopening. Export MAINTENANCE_DIR and SMOKE_CONFIG as documented in RECOVERY.md. The migration runner also takes a PostgreSQL advisory lock, so concurrent manual migration jobs serialize. No application startup performs migrations.
 
 Equivalent explicit commands (serialize them with the same operator/deploy lock):
 
@@ -129,7 +131,7 @@ Test restore before alpha access, monthly, and after backup/migration changes:
 
 1. Start a separate PostgreSQL/container/volume with no customer-network access, and restore using the matching release and role setup. Never point these commands at the running platform.
 2. Check checksum, use `pg_restore --exit-on-error --no-owner --no-acl` into the empty isolated database under the migration owner. Retain/recreate the restricted app grants separately if needed. Do not apply a newer release's migrations just to make old backup verification pass.
-3. Supply the isolated PLATFORM_DATABASE_URL and corresponding CONNECTION_ENCRYPTION_KEY to the matching backend image. Run `node dist/database/platform-db/verify-restore.js` with CONFIRM_ISOLATED_RESTORE=yes. It checks migration/schema, counts users/projects, decrypts all customer connection records only in memory, and revokes all restored platform sessions. It never connects to customer databases or prints decrypted data.
+3. Supply the isolated PLATFORM_DATABASE_URL and corresponding CONNECTION_ENCRYPTION_KEY to the matching backend image. Run `node dist/database/platform-db/verify-restore.js` with CONFIRM_ISOLATED_RESTORE=yes. It checks migration/schema, counts users/projects, decrypts all customer connection records only in memory, suspends all restored projects, revokes all restored API keys, and invalidates platform sessions. It never connects to customer databases or prints decrypted data.
 4. Verify expected metadata counts and sampled owned records. Test wrong-key failure safely. Any schema/runtime write validation must use disposable customer targets, not real restored connections.
 5. For actual disaster recovery, keep traffic closed until verification/session invalidation succeeds, then reopen with correct secrets and compatible images. Expect downtime and up to roughly 24 hours' platform-data loss with nightly-only backups.
 

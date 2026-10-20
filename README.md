@@ -109,13 +109,13 @@ This command requires both URLs explicitly, applies migrations to the platform t
 
 Each project supports one connection. All five routes require the platform session bearer credential and project ownership:
 
-| Method | Route | Behavior |
-|---|---|---|
-| POST | `/internal/projects/:projectId/database-connection` | Test and create; `201` |
-| GET | `/internal/projects/:projectId/database-connection` | Safe metadata; `200` |
-| POST | `/internal/projects/:projectId/database-connection/test` | Test saved settings, with no request body; `200` |
-| PUT | `/internal/projects/:projectId/database-connection` | Test and fully replace settings; `200` |
-| DELETE | `/internal/projects/:projectId/database-connection` | Remove saved configuration only; `204` |
+| Method | Route                                                    | Behavior                                         |
+| ------ | -------------------------------------------------------- | ------------------------------------------------ |
+| POST   | `/internal/projects/:projectId/database-connection`      | Test and create; `201`                           |
+| GET    | `/internal/projects/:projectId/database-connection`      | Safe metadata; `200`                             |
+| POST   | `/internal/projects/:projectId/database-connection/test` | Test saved settings, with no request body; `200` |
+| PUT    | `/internal/projects/:projectId/database-connection`      | Test and fully replace settings; `200`           |
+| DELETE | `/internal/projects/:projectId/database-connection`      | Remove saved configuration only; `204`           |
 
 POST and PUT require all of these fields:
 
@@ -150,22 +150,21 @@ Implement per-user management authentication before onboarding real customers. T
 
 The dependency audit currently reports four moderate development-only findings in Drizzle Kit’s legacy esbuild loader chain. The affected development-server functionality is not used here; production dependencies audit clean. Recheck upstream tooling before widening its use.
 
-
 ## Schema Builder MVP
 
 Run `npm run db:migrate` before starting the updated server. Migration `0002_schema_builder.sql` adds `schema_tables`, `schema_fields`, and `schema_migrations`. These are platform metadata; customer rows remain in the connected database. No additional environment variables or dependencies are required. PostgreSQL 16+ is supported.
 
 All seven routes require management authentication and project ownership. Foreign-owned resources return `404`:
 
-| Method | Route | Behavior |
-|---|---|---|
-| GET | `/internal/projects/:projectId/schema` | List managed table drafts and applied metadata |
-| POST | `/internal/projects/:projectId/schema/tables` | Create a draft; `201` |
-| GET | `/internal/projects/:projectId/schema/tables/:tableId` | Retrieve a definition |
-| PUT | `/internal/projects/:projectId/schema/tables/:tableId/draft` | Replace the draft at an expected revision |
-| DELETE | `/internal/projects/:projectId/schema/tables/:tableId` | Delete a never-applied definition; `204` |
-| POST | `/internal/projects/:projectId/schema/tables/:tableId/preview` | Compile SQL without connecting to or modifying the customer database |
-| POST | `/internal/projects/:projectId/schema/tables/:tableId/apply` | Verify the plan and execute it transactionally |
+| Method | Route                                                          | Behavior                                                             |
+| ------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
+| GET    | `/internal/projects/:projectId/schema`                         | List managed table drafts and applied metadata                       |
+| POST   | `/internal/projects/:projectId/schema/tables`                  | Create a draft; `201`                                                |
+| GET    | `/internal/projects/:projectId/schema/tables/:tableId`         | Retrieve a definition                                                |
+| PUT    | `/internal/projects/:projectId/schema/tables/:tableId/draft`   | Replace the draft at an expected revision                            |
+| DELETE | `/internal/projects/:projectId/schema/tables/:tableId`         | Delete a never-applied definition; `204`                             |
+| POST   | `/internal/projects/:projectId/schema/tables/:tableId/preview` | Compile SQL without connecting to or modifying the customer database |
+| POST   | `/internal/projects/:projectId/schema/tables/:tableId/apply`   | Verify the plan and execute it transactionally                       |
 
 Example creation body:
 
@@ -175,8 +174,17 @@ Example creation body:
   "fields": [
     { "name": "sku", "type": "text", "nullable": false, "unique": true },
     { "name": "title", "type": "varchar", "options": { "length": 200 } },
-    { "name": "price", "type": "decimal", "options": { "precision": 12, "scale": 2 }, "default": { "kind": "literal", "value": "0.00" } },
-    { "name": "created_at", "type": "timestamp", "default": { "kind": "current_timestamp" } }
+    {
+      "name": "price",
+      "type": "decimal",
+      "options": { "precision": 12, "scale": 2 },
+      "default": { "kind": "literal", "value": "0.00" }
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp",
+      "default": { "kind": "current_timestamp" }
+    }
   ]
 }
 ```
@@ -220,7 +228,6 @@ The platform and customer databases do not share a transaction. A lost commit re
 
 For an interrupted attempt, a trusted operator must first ensure the original request/process and customer transaction have ended. Inspect the platform migration's target definition and the customer catalog using a separate administrator connection, and establish whether the intended transaction committed. Matching object shape alone does not establish provenance. If rollback is established, record the attempt as failed. If commit is established, atomically finalize the matching applied definition/revision and the migration outcome, using a catalog snapshot in the executor's format. If the result cannot be established, keep the project blocked. Back up metadata before manual repair. There is intentionally no public reconciliation endpoint, background recovery worker, or automatic schema adoption in this milestone.
 
-
 ## Predefined Endpoint Runtime MVP
 
 Apply migration `0003_predefined_runtime.sql` with `npm run db:migrate`. It adds `endpoints` and `api_keys`; a composite foreign key prevents linking an endpoint to another project's table. No new package dependencies are introduced. Only customer schema metadata, endpoint configuration, key hashes, and connection settings are stored in the platform database. Customer rows are queried and returned directly from customer PostgreSQL.
@@ -229,14 +236,14 @@ Apply migration `0003_predefined_runtime.sql` with `npm run db:migrate`. It adds
 
 These owner-scoped routes use the existing management bearer credential:
 
-| Method | Route | Behavior |
-|---|---|---|
-| GET | `/internal/projects/:projectId/endpoints` | List table API configurations |
-| GET | `/internal/projects/:projectId/schema/tables/:tableId/api` | Retrieve one configuration |
-| PUT | `/internal/projects/:projectId/schema/tables/:tableId/api` | Create/replace configuration |
-| POST | `/internal/projects/:projectId/api-keys` | Create a runtime key; secret returned once |
-| GET | `/internal/projects/:projectId/api-keys` | List safe metadata, including revoked keys |
-| DELETE | `/internal/projects/:projectId/api-keys/:keyId` | Revoke a key; `204` |
+| Method | Route                                                      | Behavior                                   |
+| ------ | ---------------------------------------------------------- | ------------------------------------------ |
+| GET    | `/internal/projects/:projectId/endpoints`                  | List table API configurations              |
+| GET    | `/internal/projects/:projectId/schema/tables/:tableId/api` | Retrieve one configuration                 |
+| PUT    | `/internal/projects/:projectId/schema/tables/:tableId/api` | Create/replace configuration               |
+| POST   | `/internal/projects/:projectId/api-keys`                   | Create a runtime key; secret returned once |
+| GET    | `/internal/projects/:projectId/api-keys`                   | List safe metadata, including revoked keys |
+| DELETE | `/internal/projects/:projectId/api-keys/:keyId`            | Revoke a key; `204`                        |
 
 After applying a table, PUT its API configuration:
 
@@ -256,13 +263,13 @@ Create a key with `{ "name": "Frontend reads", "scope": "read" }` or `{ "name": 
 
 For key_only table operations, send `Authorization: Bearer <project-api-key>`. Protected operations use application sessions as described below:
 
-| Method | Route | Result |
-|---|---|---|
-| GET | `/api/:projectSlug/:resource` | Paginated list |
-| GET | `/api/:projectSlug/:resource/:id` | Row or `404` |
-| POST | `/api/:projectSlug/:resource` | Created row; `201` with Location |
-| PATCH | `/api/:projectSlug/:resource/:id` | Updated row or `404` |
-| DELETE | `/api/:projectSlug/:resource/:id` | `204`, or `404` when absent |
+| Method | Route                             | Result                           |
+| ------ | --------------------------------- | -------------------------------- |
+| GET    | `/api/:projectSlug/:resource`     | Paginated list                   |
+| GET    | `/api/:projectSlug/:resource/:id` | Row or `404`                     |
+| POST   | `/api/:projectSlug/:resource`     | Created row; `201` with Location |
+| PATCH  | `/api/:projectSlug/:resource/:id` | Updated row or `404`             |
+| DELETE | `/api/:projectSlug/:resource/:id` | `204`, or `404` when absent      |
 
 Read keys permit list/get. Read-write keys permit all enabled operations. Missing, invalid, revoked, wrong-project, and management credentials return `401`; insufficient scope returns `403`. Disabled or unknown resources/operations return `404`. These fixed Fastify routes resolve configurations from PostgreSQL on every request; no generated source code or dynamic route registration is involved.
 
@@ -310,12 +317,12 @@ Apply `0004_end_user_auth.sql` with `npm run db:migrate`. The platform stores `p
 
 These routes require the management bearer credential and project ownership:
 
-| Method | Route | Behavior |
-|---|---|---|
-| GET | `/internal/projects/:projectId/auth` | Safe configuration and provisioning status |
-| PUT | `/internal/projects/:projectId/auth` | Configure auth with optimistic revision |
-| POST | `/internal/projects/:projectId/auth/provision` | Provision fixed internal tables |
-| PATCH | `/internal/projects/:projectId/auth/users/:userId/role` | Set exactly `user` or `admin` |
+| Method | Route                                                   | Behavior                                   |
+| ------ | ------------------------------------------------------- | ------------------------------------------ |
+| GET    | `/internal/projects/:projectId/auth`                    | Safe configuration and provisioning status |
+| PUT    | `/internal/projects/:projectId/auth`                    | Configure auth with optimistic revision    |
+| POST   | `/internal/projects/:projectId/auth/provision`          | Provision fixed internal tables            |
+| PATCH  | `/internal/projects/:projectId/auth/users/:userId/role` | Set exactly `user` or `admin`              |
 
 Create configuration with `{ "enabled": true, "signupEnabled": true, "expectedRevision": 0 }`. Optional `sessionLifetimeSeconds` defaults to 86400 and is bounded to 300–604800 seconds. Updates require the current `expectedRevision`; omitted lifetime resets to the default. Configure and provision need an existing saved connection. Auth requests become available only when enabled and provisioning is ready.
 
@@ -327,12 +334,12 @@ Provisioning spans two databases. A lost customer commit response records `outco
 
 ### Signup, login, logout, current user
 
-| Method | Runtime route | Contract |
-|---|---|---|
-| POST | `/api/:projectSlug/auth/signup` | `{ "email": "alice@example.test", "password": "a long private passphrase" }`; returns safe user with `201` |
-| POST | `/api/:projectSlug/auth/login` | Same body; returns `{ token, expiresIn, user }` |
-| POST | `/api/:projectSlug/auth/logout` | Revoke bearer session; `204`; repeated logout is safe |
-| GET | `/api/:projectSlug/auth/me` | Return `{ id, email, role }` for bearer session |
+| Method | Runtime route                   | Contract                                                                                                   |
+| ------ | ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| POST   | `/api/:projectSlug/auth/signup` | `{ "email": "alice@example.test", "password": "a long private passphrase" }`; returns safe user with `201` |
+| POST   | `/api/:projectSlug/auth/login`  | Same body; returns `{ token, expiresIn, user }`                                                            |
+| POST   | `/api/:projectSlug/auth/logout` | Revoke bearer session; `204`; repeated logout is safe                                                      |
+| GET    | `/api/:projectSlug/auth/me`     | Return `{ id, email, role }` for bearer session                                                            |
 
 Signup/login require neither a project API key nor a management token. Signup must be enabled separately. Email normalization trims surrounding whitespace and lowercases; it does not apply provider-specific transformations. Normalized email is unique in customer PostgreSQL. Signup accepts only email/password and always creates an active `user`; there is no first-user admin shortcut. Duplicate or failed account creation returns a generic response. Email is unverified, and successful signup necessarily exposes some account-existence information.
 
@@ -352,11 +359,31 @@ Endpoint configuration PUT accepts optional `policies`, keyed by operation (`lis
   "expectedAppliedRevision": 1,
   "expectedConfigRevision": 1,
   "policies": {
-    "list": { "mode": "owner", "ownerFieldId": "APPLIED_UUID_FIELD_ID", "allowAdmin": false },
-    "get": { "mode": "owner", "ownerFieldId": "APPLIED_UUID_FIELD_ID", "allowAdmin": false },
-    "create": { "mode": "owner", "ownerFieldId": "APPLIED_UUID_FIELD_ID", "allowAdmin": false },
-    "update": { "mode": "owner", "ownerFieldId": "APPLIED_UUID_FIELD_ID", "allowAdmin": false },
-    "delete": { "mode": "owner", "ownerFieldId": "APPLIED_UUID_FIELD_ID", "allowAdmin": false }
+    "list": {
+      "mode": "owner",
+      "ownerFieldId": "APPLIED_UUID_FIELD_ID",
+      "allowAdmin": false
+    },
+    "get": {
+      "mode": "owner",
+      "ownerFieldId": "APPLIED_UUID_FIELD_ID",
+      "allowAdmin": false
+    },
+    "create": {
+      "mode": "owner",
+      "ownerFieldId": "APPLIED_UUID_FIELD_ID",
+      "allowAdmin": false
+    },
+    "update": {
+      "mode": "owner",
+      "ownerFieldId": "APPLIED_UUID_FIELD_ID",
+      "allowAdmin": false
+    },
+    "delete": {
+      "mode": "owner",
+      "ownerFieldId": "APPLIED_UUID_FIELD_ID",
+      "allowAdmin": false
+    }
   }
 }
 ```
@@ -393,15 +420,15 @@ Workflow endpoints are POST-only, at `/api/:projectSlug/:workflowPath`. Paths ar
 
 All routes below require management authentication and project ownership:
 
-| Method | Route | Contract |
-|---|---|---|
-| POST | `/internal/projects/:projectId/workflows` | `{ path, definition }`; creates disabled draft, `201` |
-| GET | `/internal/projects/:projectId/workflows` | List configurations |
-| GET | `/internal/projects/:projectId/workflows/:workflowId` | Read configuration/draft |
-| PUT | `.../:workflowId/draft` | `{ expectedDraftRevision, definition }`; replace draft and increment revision |
-| POST | `.../:workflowId/preview` | No body; static validation, dependency/hash/access summaries |
-| POST | `.../:workflowId/publish` | `{ expectedDraftRevision, definitionHash }`; revalidate and atomically publish immutable version |
-| PATCH | `.../:workflowId` | `{ expectedDraftRevision, enabled }`; change enabled state only |
+| Method | Route                                                 | Contract                                                                                         |
+| ------ | ----------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| POST   | `/internal/projects/:projectId/workflows`             | `{ path, definition }`; creates disabled draft, `201`                                            |
+| GET    | `/internal/projects/:projectId/workflows`             | List configurations                                                                              |
+| GET    | `/internal/projects/:projectId/workflows/:workflowId` | Read configuration/draft                                                                         |
+| PUT    | `.../:workflowId/draft`                               | `{ expectedDraftRevision, definition }`; replace draft and increment revision                    |
+| POST   | `.../:workflowId/preview`                             | No body; static validation, dependency/hash/access summaries                                     |
+| POST   | `.../:workflowId/publish`                             | `{ expectedDraftRevision, definitionHash }`; revalidate and atomically publish immutable version |
+| PATCH  | `.../:workflowId`                                     | `{ expectedDraftRevision, enabled }`; change enabled state only                                  |
 
 Runtime uses only an enabled endpoint's published snapshot. Unpublished/disabled paths return `404`. Editing a draft does not alter a published API. Preview never opens a customer connection, runs a workflow, acquires customer locks, or executes writes. It returns a deterministic definition hash, draft revision, required key scope, configured step counts, applied schema dependencies, and DB operation/access summaries with parameterized SQL templates. Values are omitted from those templates; owner templates show the owner-restricted case, with configured admin bypass handled at execution. Publish rechecks metadata and the hash server-side. Newly applied schema revisions require preview and republish, including nullable additions; workflows never automatically expose new fields.
 
@@ -411,7 +438,10 @@ The document contains `input`, `auth`, and `steps`:
 
 ```json
 {
-  "input": { "product_id": { "type": "uuid", "required": true }, "quantity": { "type": "integer", "required": true, "min": 1 } },
+  "input": {
+    "product_id": { "type": "uuid", "required": true },
+    "quantity": { "type": "integer", "required": true, "min": 1 }
+  },
   "auth": "authenticated",
   "steps": []
 }
@@ -463,7 +493,6 @@ Logs contain route/request/principal IDs, safe workflow/version IDs, configured 
 
 Set Variable, find_many, additional HTTP methods, route parameters, arbitrary SQL/code, functions, external calls, secrets, loops, parallelism, custom headers, manual transactions, cross-database operations, background jobs, and idempotency keys are deferred.
 
-
 ## Dashboard MVP
 
 The authenticated Next.js dashboard lives in `frontend/`. See [frontend setup and complete demo](frontend/README.md) for signup/login, environment configuration, running both applications, and disposable Playwright testing. Fastify validates platform sessions and enforces project ownership.
@@ -473,7 +502,6 @@ The authenticated Next.js dashboard lives in `frontend/`. See [frontend setup an
 Management and runtime responses now include `X-Request-Id`, including errors. Error response bodies retain their existing contracts.
 
 The existing owned workflow GET response also includes `publishedDefinition` (or null), allowing the dashboard to distinguish unpublished draft changes after reload. This is a read-only publication snapshot; workflow execution and publication behavior are unchanged.
-
 
 ## Developer usability and reliability
 
@@ -492,3 +520,9 @@ the same public runtime origin (local example: `http://127.0.0.1:3000`). Docs ar
 and use applied/published metadata; drafts are excluded. No database migration is needed.
 A 503 `API_DOCS_UNAVAILABLE` means deployment metadata needs review, or an enabled
 workflow needs republishing after a schema change. Generation does not inspect customer DBs.
+
+## Private Alpha Reliability & Recovery
+
+See [the operator recovery runbook](deploy/RECOVERY.md) for same-target credential updates, dry-run setup reconciliation, project suspension, contained restore, encryption-key maintenance, limits and maintenance-gated upgrades. These controls do not delete customer tables or automatically retry writes.
+
+The [hardening validation record and release checklist](deploy/ALPHA-VALIDATION.md) describe disposable upgrade, restore, interruption and deployment-gate evidence and the remaining alpha limits.

@@ -1,4 +1,5 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
 import { fieldTypes } from '../../../../shared/public-contracts.js';
 import { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
@@ -86,7 +87,7 @@ export function SchemaEditor({
     return success;
   }
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <DirtyGuard
         dirty={f.formState.isDirty}
         save={table ? saveForNavigation : undefined}
@@ -467,6 +468,6 @@ export function SchemaEditor({
         </>
       )}
       <ActionState action={action} />
-    </>
+    </MutationBoundary>
   );
 }

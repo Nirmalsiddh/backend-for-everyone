@@ -14,7 +14,8 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "test:integration": "node --env-file-if-exists=.env --import tsx --test --test-concurrency=1 tests/integration/*.test.ts",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node --env-file-if-exists=.env --import tsx src/database/platform-db/migrate.ts"
+    "db:migrate": "node --env-file-if-exists=.env --import tsx src/database/platform-db/migrate.ts",
+    "operator": "node --env-file-if-exists=.env --import tsx src/operations/operator.ts"
   },
   "dependencies": {
     "argon2": "^0.45.1",

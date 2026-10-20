@@ -10,6 +10,7 @@ const keys = (names: string[]) => (data: unknown) =>
   Array.isArray(data) ? data.map((d) => pick(d, names)) : pick(data, names);
 const connection = keys([
   'id',
+  'revision',
   'label',
   'lastTestStatus',
   'lastTestedAt',
@@ -74,6 +75,7 @@ export const operations: Operation[] = [
     project: projectDto,
   },
   rule('database-connection', ['GET', 'POST', 'PUT', 'DELETE'], connection),
+  rule('database-connection/credentials', ['PUT'], connection),
   rule('database-connection/test', ['POST'], connection),
   rule('schema', ['GET'], (d) => (d as unknown[]).map(tableDto)),
   rule('schema/tables', ['POST'], tableDto),
@@ -91,7 +93,9 @@ export const operations: Operation[] = [
   rule(`schema/tables/${uuid}/api`, ['GET', 'PUT'], endpoint),
   rule('endpoints', ['GET'], endpoint),
   // This route returns the backend's explicit public document DTO, never raw metadata.
-  rule('openapi', ['GET'], (d) => pick(d, ['openapi', 'info', 'servers', 'paths', 'components'])),
+  rule('openapi', ['GET'], (d) =>
+    pick(d, ['openapi', 'info', 'servers', 'paths', 'components']),
+  ),
   rule('api-keys', ['GET', 'POST'], (d, m) =>
     keys([
       'id',

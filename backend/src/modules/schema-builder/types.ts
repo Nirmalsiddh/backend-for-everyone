@@ -3,7 +3,8 @@ import type { ConnectionConfig } from '../database-connections/types.js';
 import type { fieldTypes } from '../../../../shared/public-contracts.js';
 export type FieldType = (typeof fieldTypes)[number];
 export type FieldDefault =
-  { kind: 'literal'; value: unknown } | { kind: 'current_timestamp' };
+  | { kind: 'literal'; value: unknown }
+  | { kind: 'current_timestamp' };
 export interface FieldInput {
   id?: string;
   name: string;
@@ -56,6 +57,7 @@ export interface DraftInput {
   fields: FieldInput[];
 }
 export interface Plan {
+  receipt?: { projectId: string; operationId: string };
   hash: string;
   revision: number;
   definition: Definition;
@@ -63,7 +65,10 @@ export interface Plan {
   operation: 'create_table' | 'add_columns';
 }
 export type MigrationStatus =
-  'applying' | 'applied' | 'failed' | 'outcome_unknown';
+  | 'applying'
+  | 'applied'
+  | 'failed'
+  | 'outcome_unknown';
 export interface SchemaRepository {
   list(projectId: string, ownerId: string): Promise<TableRecord[]>;
   get(

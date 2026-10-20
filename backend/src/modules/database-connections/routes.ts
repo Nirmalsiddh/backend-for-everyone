@@ -73,6 +73,7 @@ const metadata = {
         blockers: { type: 'array', items: { type: 'string' } },
       },
     },
+    revision: { type: 'integer' },
     id: { type: 'string' },
     projectId: { type: 'string' },
     label: { type: 'string' },
@@ -119,10 +120,48 @@ export async function connectionRoutes(
         true,
       ),
   );
+  app.put<{
+    Params: { projectId: string };
+    Body: {
+      expectedRevision: number;
+      username: string;
+      password: string;
+      ssl: boolean;
+    };
+  }>(
+    `${path}/credentials`,
+    {
+      schema: {
+        params,
+        body: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['expectedRevision', 'username', 'password', 'ssl'],
+          properties: {
+            expectedRevision: { type: 'integer', minimum: 1 },
+            username: body.properties.username,
+            password: body.properties.password,
+            ssl: body.properties.ssl,
+          },
+        },
+        response: { 200: metadata },
+      },
+    },
+    (request) =>
+      options.service.updateCredentials(
+        request.params.projectId,
+        request.platformPrincipal.userId,
+        request.body,
+      ),
+  );
   app.get<Request>(
     path,
     { schema: { params, response: { 200: metadata } } },
-    (request) => options.service.get(request.params.projectId, request.platformPrincipal.userId),
+    (request) =>
+      options.service.get(
+        request.params.projectId,
+        request.platformPrincipal.userId,
+      ),
   );
   app.post<Request>(
     `${path}/test`,
@@ -138,10 +177,16 @@ export async function connectionRoutes(
       },
     },
     (request) =>
-      options.service.test(request.params.projectId, request.platformPrincipal.userId),
+      options.service.test(
+        request.params.projectId,
+        request.platformPrincipal.userId,
+      ),
   );
   app.delete<Request>(path, { schema: { params } }, async (request, reply) => {
-    await options.service.delete(request.params.projectId, request.platformPrincipal.userId);
+    await options.service.delete(
+      request.params.projectId,
+      request.platformPrincipal.userId,
+    );
     return reply.code(204).send();
   });
 }

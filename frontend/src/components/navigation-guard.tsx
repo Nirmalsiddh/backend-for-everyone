@@ -11,6 +11,7 @@ import {
 import { useRouter, usePathname } from 'next/navigation';
 type Guard = {
   dirty: boolean;
+  pending?: boolean;
   save?: () => Promise<boolean>;
   discard?: () => void;
 };
@@ -100,6 +101,13 @@ export function NavigationProtection({ children }: { children: ReactNode }) {
         <p>
           Save your changes before leaving, discard them, or stay on this page.
         </p>
+        {dirty.some((g) => g.pending) && (
+          <p role="alert">
+            A mutation is still pending. Leaving does not cancel it and may lose
+            a one-time API-key secret. Refresh saved metadata before retrying;
+            revoke a newly created key if its secret was lost.
+          </p>
+        )}
         {message && <p role="alert">{message}</p>}
         <button
           disabled={busy || dirty.some((g) => !g.save)}
@@ -141,18 +149,20 @@ export function DirtyGuard({
   dirty,
   save,
   discard,
+  pending = false,
 }: {
   dirty: boolean;
+  pending?: boolean;
   save?: () => Promise<boolean>;
   discard?: () => void;
 }) {
   const entries = useContext(Context);
   const id = useId();
   useEffect(() => {
-    entries?.set(id, { dirty, save, discard });
+    entries?.set(id, { dirty, save, discard, pending });
     return () => {
       entries?.delete(id);
     };
-  }, [entries, id, dirty, save, discard]);
+  }, [entries, id, dirty, save, discard, pending]);
   return null;
 }

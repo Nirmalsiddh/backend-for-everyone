@@ -11,7 +11,10 @@ import {
 } from './helpers.js';
 
 test('create and retrieve a project with server-assigned ownership', async (t) => {
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"),
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
     env,
     projectRepository: memoryRepository(),
     logger: false,
@@ -38,7 +41,10 @@ test('create and retrieve a project with server-assigned ownership', async (t) =
 });
 
 test('management endpoints require authentication before body validation', async (t) => {
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"),
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
     env,
     projectRepository: memoryRepository(),
     logger: false,
@@ -57,7 +63,10 @@ test('management endpoints require authentication before body validation', async
 });
 
 test('reject invalid bodies, unknown fields, malformed JSON, and oversized input', async (t) => {
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"),
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
     env,
     projectRepository: memoryRepository(),
     logger: false,
@@ -100,7 +109,14 @@ test('reject invalid bodies, unknown fields, malformed JSON, and oversized input
 
 test('duplicate slug is 409; foreign-owned and absent projects both return 404', async (t) => {
   const repository = memoryRepository();
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: repository, logger: false });
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
+    env,
+    projectRepository: repository,
+    logger: false,
+  });
   t.after(() => app.close());
   const payload = { name: 'Shop', slug: 'shop-api' };
   await repository.create(ownerId, payload);
@@ -135,7 +151,14 @@ test('unexpected errors never expose database details', async (t) => {
   repository.create = async () => {
     throw new Error('postgres://admin:secret@host/db SQL VALUES private');
   };
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: repository, logger: false });
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
+    env,
+    projectRepository: repository,
+    logger: false,
+  });
   t.after(() => app.close());
   const response = await app.inject({
     method: 'POST',
@@ -147,6 +170,7 @@ test('unexpected errors never expose database details', async (t) => {
   assert.deepEqual(response.json(), {
     code: 'INTERNAL_ERROR',
     message: 'Internal server error',
+    requestId: response.headers['x-request-id'],
   });
 });
 
@@ -155,7 +179,14 @@ test('project listing is authenticated, bounded, owner scoped, and paginated', a
   await repository.create(ownerId, { name: 'First', slug: 'first' });
   await repository.create(ownerId, { name: 'Second', slug: 'second' });
   await repository.create(otherOwnerId, { name: 'Foreign', slug: 'foreign' });
-  const app = buildApp({ platformAuthRepository: memoryPlatformAuthRepository("11111111-1111-4111-8111-111111111111"), env, projectRepository: repository, logger: false });
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(
+      '11111111-1111-4111-8111-111111111111',
+    ),
+    env,
+    projectRepository: repository,
+    logger: false,
+  });
   t.after(() => app.close());
   assert.equal((await app.inject('/internal/projects')).statusCode, 401);
   const first = await app.inject({

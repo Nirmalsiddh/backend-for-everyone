@@ -2,7 +2,10 @@ import { drizzle } from 'drizzle-orm/node-postgres';
 import pg from 'pg';
 import * as schema from './schema.js';
 
-export function createPlatformDatabase(connectionString: string) {
+export function createPlatformDatabase(
+  connectionString: string,
+  applicationName = 'platform-management',
+) {
   const pool = new pg.Pool({
     connectionString,
     max: 10,
@@ -10,7 +13,7 @@ export function createPlatformDatabase(connectionString: string) {
     idleTimeoutMillis: 30_000,
     statement_timeout: 5_000,
     query_timeout: 6_000,
-    application_name: 'platform-management',
+    application_name: applicationName,
   });
   const db = drizzle(pool, { schema });
   return { pool, db };

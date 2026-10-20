@@ -70,7 +70,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
   await page.getByLabel('Table name', { exact: true }).fill('products');
   await page.getByRole('button', { name: 'Add field', exact: true }).click();
   let field = page
-    .locator('fieldset')
+    .locator('fieldset:not(.mutation-boundary)')
     .filter({
       has: page.getByRole('textbox', { name: 'Field name', exact: true }),
     })
@@ -79,7 +79,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
   await field.getByLabel('Required', { exact: true }).check();
   await page.getByRole('button', { name: 'Add field', exact: true }).click();
   field = page
-    .locator('fieldset')
+    .locator('fieldset:not(.mutation-boundary)')
     .filter({
       has: page.getByRole('textbox', { name: 'Field name', exact: true }),
     })
@@ -195,7 +195,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
   await go('apis');
   for (const op of ['list', 'get', 'create', 'update', 'delete']) {
     const row = page
-      .locator('fieldset')
+      .locator('fieldset:not(.mutation-boundary)')
       .filter({ has: page.getByLabel('Enable ' + op, { exact: true }) });
     await row
       .getByRole('combobox', { name: 'Policy', exact: true })
@@ -229,7 +229,7 @@ test('complete dashboard product flow on disposable PostgreSQL', async ({
   // Keep list key-only for observing the workflow transaction independently of owner CRUD.
   await go('apis');
   const listRow = page
-    .locator('fieldset')
+    .locator('fieldset:not(.mutation-boundary)')
     .filter({ has: page.getByLabel('Enable list', { exact: true }) });
   await listRow
     .getByRole('combobox', { name: 'Policy', exact: true })

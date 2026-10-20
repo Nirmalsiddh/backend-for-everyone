@@ -15,7 +15,7 @@ export const errorSchema: JsonSchema = {
 export const requestId = {
   'X-Request-Id': {
     description:
-      'Request correlation ID. Current CORS does not expose this header to cross-origin JavaScript.',
+      'Request correlation ID. Exposed to configured browser origins for support diagnostics.',
     schema: { type: 'string' },
   },
 };

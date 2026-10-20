@@ -1,3 +1,4 @@
+import { enforceQuota } from '../../operations/quotas.js';
 import { and, asc, eq } from 'drizzle-orm';
 import type { PlatformDatabase } from '../../database/platform-db/client.js';
 import { projects } from '../../database/platform-db/schema.js';
@@ -29,6 +30,7 @@ export class PostgresProjectRepository implements ProjectRepository {
         ownerId: projects.ownerId,
         name: projects.name,
         slug: projects.slug,
+        runtimeState: projects.runtimeState,
         createdAt: projects.createdAt,
       })
       .from(projects)
@@ -40,12 +42,15 @@ export class PostgresProjectRepository implements ProjectRepository {
 
   async create(ownerId: string, input: CreateProjectInput) {
     try {
-      const [project] = await this.db
-        .insert(projects)
-        .values({ ownerId, ...input })
-        .returning();
-      if (!project) throw new Error('Insert returned no project');
-      return project;
+      return await this.db.transaction(async (tx) => {
+        await enforceQuota(tx, 'projects', ownerId);
+        const [project] = await tx
+          .insert(projects)
+          .values({ ownerId, ...input })
+          .returning();
+        if (!project) throw new Error('Insert returned no project');
+        return project;
+      });
     } catch (error) {
       if (postgresCode(error) === '23505') {
         throw new ProjectError(

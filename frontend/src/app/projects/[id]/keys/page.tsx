@@ -1,4 +1,5 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
 import { CredentialGuide } from '@/components/credential-guide';
 import { SecretDialog } from '@/components/secret-dialog';
 import { DirtyGuard } from '@/components/ui';
@@ -11,7 +12,7 @@ import { useData, useAction, ActionState, State } from '@/components/ui';
 export default function Keys() {
   const { id } = useParams<{ id: string }>();
   const path = `projects/${id}/api-keys`;
-  const q = useData<KeyMetadata[]>(path);
+  const q = useData<KeyMetadata[]>(path, { refetchOnMount: 'always' });
   const action = useAction({
     refresh: [path],
     success: 'API key metadata refreshed',
@@ -22,13 +23,18 @@ export default function Keys() {
     scope: string;
   }>({ defaultValues: { scope: 'read' } });
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <h1>API keys</h1>
       <CredentialGuide />
       <p>API keys are project-scoped secrets.</p>
       <p>
         Keep API keys in trusted server code. Browser and mobile application
         bundles cannot keep embedded API keys secret.
+      </p>
+      <p>
+        If a key creation response was lost, refresh this list. Identify the
+        uncertain key by its name, prefix and creation time. If you did not
+        receive its secret, revoke it and create another.
       </p>
       <DirtyGuard dirty={formState.isDirty} />
       <form
@@ -58,6 +64,14 @@ export default function Keys() {
       </form>
       {secret && <SecretDialog secret={secret} onClose={() => setSecret('')} />}
       <ActionState action={action} />
+      <button
+        type="button"
+        className="secondary"
+        disabled={q.isFetching}
+        onClick={() => void q.refetch()}
+      >
+        Refresh API keys
+      </button>
       <State query={q}>
         {q.data?.length === 0 ? (
           <p>
@@ -70,6 +84,7 @@ export default function Keys() {
               <tr>
                 <th>Name</th>
                 <th>Prefix</th>
+                <th>Created</th>
                 <th>Scope</th>
                 <th>Status</th>
                 <th>Action</th>
@@ -80,6 +95,11 @@ export default function Keys() {
                 <tr key={k.id}>
                   <td>{k.name}</td>
                   <td>{k.keyPrefix}</td>
+                  <td>
+                    {k.createdAt
+                      ? new Date(k.createdAt).toLocaleString()
+                      : 'Unavailable'}
+                  </td>
                   <td>{k.scope === 'read' ? 'Read only' : 'Read and write'}</td>
                   <td>{k.revokedAt ? 'Revoked' : 'Active'}</td>
                   <td>
@@ -107,6 +127,6 @@ export default function Keys() {
           </table>
         )}
       </State>
-    </>
+    </MutationBoundary>
   );
 }

@@ -27,7 +27,8 @@ function table(name: string, id: string) {
   };
 }
 let fixtureCookies:
-  Awaited<ReturnType<ReturnType<Page['context']>['cookies']>> | undefined;
+  | Awaited<ReturnType<ReturnType<Page['context']>['cookies']>>
+  | undefined;
 async function fixture(page: Page, workflow?: any) {
   if (fixtureCookies) await page.context().addCookies(fixtureCookies);
   else {
@@ -151,7 +152,7 @@ test('owner selection is deliberate and dirty project navigation supports discar
   await fixture(page);
   await page.goto(`/projects/${id}/apis`);
   const row = page
-    .locator('fieldset')
+    .locator('fieldset:not(.mutation-boundary)')
     .filter({ has: page.getByLabel('Enable list', { exact: true }) })
     .first();
   await row.getByLabel('Enable list', { exact: true }).check();
@@ -446,4 +447,121 @@ test('manual Playground selection supersedes a delayed Docs handoff', async ({
     page.getByLabel('JSON request body', { exact: true }),
   ).toHaveValue(/keep@example.test/);
   await expect(page.getByTestId('response-status')).toHaveCount(0);
+});
+
+test('pending API save freezes controls and a departed response cannot replace navigation', async ({
+  page,
+}) => {
+  await fixture(page);
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>((r) => {
+      release = r;
+    }),
+    received = new Promise<void>((r) => {
+      started = r;
+    });
+  await page.route(
+    '**/api/management/projects/*/schema/tables/*/api',
+    async (route) => {
+      if (route.request().method() !== 'PUT') return route.fallback();
+      started();
+      await gate;
+      await route
+        .fulfill({
+          contentType: 'application/json',
+          body: JSON.stringify({
+            id: tableId,
+            tableId,
+            resourceName: 'products',
+            enabledOperations: ['list'],
+            policies: { list: { mode: 'key_only' } },
+            revision: 1,
+          }),
+        })
+        .catch(() => {});
+    },
+  );
+  await page.goto(`/projects/${id}/apis`);
+  await page.getByLabel('Enable list', { exact: true }).first().check();
+  await page
+    .getByRole('button', { name: 'Save products API', exact: true })
+    .click();
+  await received;
+  await expect(
+    page.getByLabel('Enable create', { exact: true }).first(),
+  ).toBeDisabled();
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText(
+    'mutation is still pending',
+  );
+  await page
+    .getByRole('button', { name: 'Discard and leave', exact: true })
+    .click();
+  await expect(page).toHaveURL(`/projects/${id}`);
+  release();
+  await expect(page).toHaveURL(`/projects/${id}`);
+});
+
+test('pending key creation warns on leave and late secrets never appear on another page', async ({
+  page,
+}) => {
+  await fixture(page);
+  let release!: () => void, started!: () => void;
+  const gate = new Promise<void>((r) => {
+      release = r;
+    }),
+    received = new Promise<void>((r) => {
+      started = r;
+    });
+  await page.route('**/api/management/projects/*/api-keys', async (route) => {
+    if (route.request().method() !== 'POST') return route.fallback();
+    started();
+    await gate;
+    await route
+      .fulfill({
+        contentType: 'application/json',
+        body: JSON.stringify({ key: 'pk_late_secret_fixture' }),
+      })
+      .catch(() => {});
+  });
+  await page.goto(`/projects/${id}/keys`);
+  await page.getByLabel('Name', { exact: true }).fill('Pending key');
+  await page.getByRole('button', { name: 'Generate key', exact: true }).click();
+  await received;
+  await expect(page.getByLabel('Name', { exact: true })).toBeDisabled();
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  await expect(page.getByRole('dialog')).toContainText(
+    'one-time API-key secret',
+  );
+  await page
+    .getByRole('button', { name: 'Discard and leave', exact: true })
+    .click();
+  await expect(page).toHaveURL(`/projects/${id}`);
+  release();
+  await expect(page.getByTestId('new-key')).toHaveCount(0);
+  await expect(page.getByText('pk_late_secret_fixture')).toHaveCount(0);
+});
+
+test('375px core forms, keyboard focus and safe copy labels remain usable', async ({
+  page,
+}) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  for (const path of [
+    '',
+    '/database',
+    '/schema',
+    '/apis',
+    '/auth',
+    '/playground',
+  ]) {
+    await page.goto(`/projects/${id}${path}`);
+    await expect(page.locator('main')).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 2,
+      ),
+    ).toBe(true);
+    await page.keyboard.press('Tab');
+  }
 });

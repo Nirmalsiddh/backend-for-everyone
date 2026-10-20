@@ -1,3 +1,5 @@
+import { runtimeAdmission } from './operations/runtime-admission.js';
+import { setupLeases } from './operations/setup-lease.js';
 import { PostgresDocsRepository } from './modules/api-docs/repository.js';
 import { createReadiness } from './database/platform-db/readiness.js';
 import { PostgresWorkflowRepository } from './modules/workflows/repository.js';
@@ -16,23 +18,46 @@ import { PostgresConnectionRepository } from './modules/database-connections/rep
 async function main() {
   const env = loadEnv();
   const { db, pool } = createPlatformDatabase(env.databaseUrl);
+  const leases = setupLeases(env.databaseUrl);
   const readiness = createReadiness(env.databaseUrl);
-  const app = buildApp({ env, docsRepository: new PostgresDocsRepository(db), readiness: readiness.check, platformAuthRepository: new PostgresPlatformAuthRepository(db), projectRepository: new PostgresProjectRepository(db),
-    connectionRepository: new PostgresConnectionRepository(db), schemaRepository: new PostgresSchemaRepository(db), endpointRepository: new PostgresEndpointRepository(db),
-    apiKeyRepository: new PostgresApiKeyRepository(db), runtimeRepository: new PostgresRuntimeRepository(db), authRepository: new PostgresAuthRepository(db), workflowRepository: new PostgresWorkflowRepository(db) });
+  const app = buildApp({
+    env,
+    runtimeAdmission: runtimeAdmission(db),
+    acquireSetupLease: leases.acquire,
+    docsRepository: new PostgresDocsRepository(db),
+    readiness: readiness.check,
+    platformAuthRepository: new PostgresPlatformAuthRepository(db),
+    projectRepository: new PostgresProjectRepository(db),
+    connectionRepository: new PostgresConnectionRepository(db),
+    schemaRepository: new PostgresSchemaRepository(db),
+    endpointRepository: new PostgresEndpointRepository(db),
+    apiKeyRepository: new PostgresApiKeyRepository(db),
+    runtimeRepository: new PostgresRuntimeRepository(db),
+    authRepository: new PostgresAuthRepository(db),
+    workflowRepository: new PostgresWorkflowRepository(db),
+  });
   pool.on('error', () => app.log.error('Platform database pool error'));
-  app.addHook('onClose', async () => { await readiness.close(); await pool.end(); });
+  app.addHook('onClose', async () => {
+    await leases.close();
+    await readiness.close();
+    await pool.end();
+  });
 
   let closing = false;
   const shutdown = async () => {
     if (closing) return;
     closing = true;
-    try { await app.close(); } catch { process.exitCode = 1; }
+    try {
+      await app.close();
+    } catch {
+      process.exitCode = 1;
+    }
   };
   process.once('SIGINT', shutdown);
   process.once('SIGTERM', shutdown);
 
   try {
+    await readiness.check();
     await app.listen({ host: env.host, port: env.port });
   } catch {
     app.log.error('Startup failed; verify configuration and migrations');

@@ -1,4 +1,5 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
@@ -123,104 +124,106 @@ function Editor({
   }
   return (
     <section>
-      <h2>{table.name}</h2>
-      <p>Choose which operations your API should expose.</p>
-      <DirtyGuard
-        dirty={f.formState.isDirty}
-        save={save}
-        discard={() => f.reset()}
-      />
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void save();
-        }}
-      >
-        <p>
-          Choose the enabled operations, then configure the access each
-          operation grants.
-        </p>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            operations.forEach((op) =>
-              f.setValue(`enabled.${op}`, true, { shouldDirty: true }),
-            )
-          }
+      <MutationBoundary busy={action.busy}>
+        <h2>{table.name}</h2>
+        <p>Choose which operations your API should expose.</p>
+        <DirtyGuard
+          dirty={f.formState.isDirty}
+          save={save}
+          discard={() => f.reset()}
+        />
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void save();
+          }}
         >
-          Select all operations
-        </button>
-        <button
-          type="button"
-          className="secondary"
-          onClick={() =>
-            operations.forEach((op) =>
-              f.setValue(`enabled.${op}`, false, { shouldDirty: true }),
-            )
-          }
-        >
-          Disable all operations
-        </button>
-        <fieldset>
-          <legend>Apply one policy to enabled operations</legend>
-          <PolicyEditor
-            authReady={authReady}
-            authHref={`/projects/${projectId}/auth`}
-            value={bulk}
-            onChange={setBulk}
-            fields={table.appliedDefinition?.definition.fields ?? []}
-          />
+          <p>
+            Choose the enabled operations, then configure the access each
+            operation grants.
+          </p>
           <button
             type="button"
+            className="secondary"
             onClick={() =>
-              operations
-                .filter((op) => enabled[op])
-                .forEach((op) =>
-                  f.setValue(`policies.${op}`, structuredClone(bulk), {
-                    shouldDirty: true,
-                  }),
-                )
+              operations.forEach((op) =>
+                f.setValue(`enabled.${op}`, true, { shouldDirty: true }),
+              )
             }
           >
-            Apply policy to enabled operations
+            Select all operations
           </button>
-        </fieldset>
-        {operations.map((op) => (
-          <fieldset key={op}>
-            <legend>{labels[op]}</legend>
-            <p>{descriptions[op]}</p>
-            {endpoint?.enabledOperations.includes(op) && (
-              <Link
-                href={`/projects/${projectId}/playground?target=${encodeURIComponent(`table:${endpoint.id}:${op}`)}`}
-              >
-                Test this endpoint
-              </Link>
-            )}
-            <label className="check">
-              <input type="checkbox" {...f.register(`enabled.${op}`)} />
-              Enable {op}
-            </label>
-            {enabled[op] && (
-              <Controller
-                control={f.control}
-                name={`policies.${op}`}
-                render={({ field }) => (
-                  <PolicyEditor
-                    authReady={authReady}
-                    authHref={`/projects/${projectId}/auth`}
-                    value={field.value}
-                    onChange={field.onChange}
-                    fields={table.appliedDefinition?.definition.fields ?? []}
-                  />
-                )}
-              />
-            )}
+          <button
+            type="button"
+            className="secondary"
+            onClick={() =>
+              operations.forEach((op) =>
+                f.setValue(`enabled.${op}`, false, { shouldDirty: true }),
+              )
+            }
+          >
+            Disable all operations
+          </button>
+          <fieldset>
+            <legend>Apply one policy to enabled operations</legend>
+            <PolicyEditor
+              authReady={authReady}
+              authHref={`/projects/${projectId}/auth`}
+              value={bulk}
+              onChange={setBulk}
+              fields={table.appliedDefinition?.definition.fields ?? []}
+            />
+            <button
+              type="button"
+              onClick={() =>
+                operations
+                  .filter((op) => enabled[op])
+                  .forEach((op) =>
+                    f.setValue(`policies.${op}`, structuredClone(bulk), {
+                      shouldDirty: true,
+                    }),
+                  )
+              }
+            >
+              Apply policy to enabled operations
+            </button>
           </fieldset>
-        ))}
-        <button disabled={action.busy}>Save {table.name} API</button>
-      </form>
-      <ActionState action={action} />
+          {operations.map((op) => (
+            <fieldset key={op}>
+              <legend>{labels[op]}</legend>
+              <p>{descriptions[op]}</p>
+              {endpoint?.enabledOperations.includes(op) && (
+                <Link
+                  href={`/projects/${projectId}/playground?target=${encodeURIComponent(`table:${endpoint.id}:${op}`)}`}
+                >
+                  Test this endpoint
+                </Link>
+              )}
+              <label className="check">
+                <input type="checkbox" {...f.register(`enabled.${op}`)} />
+                Enable {op}
+              </label>
+              {enabled[op] && (
+                <Controller
+                  control={f.control}
+                  name={`policies.${op}`}
+                  render={({ field }) => (
+                    <PolicyEditor
+                      authReady={authReady}
+                      authHref={`/projects/${projectId}/auth`}
+                      value={field.value}
+                      onChange={field.onChange}
+                      fields={table.appliedDefinition?.definition.fields ?? []}
+                    />
+                  )}
+                />
+              )}
+            </fieldset>
+          ))}
+          <button disabled={action.busy}>Save {table.name} API</button>
+        </form>
+        <ActionState action={action} />
+      </MutationBoundary>
     </section>
   );
 }

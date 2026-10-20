@@ -45,7 +45,14 @@ export class WorkflowService {
     );
     const reasons = [
       ...(stale
-        ? ['Applied schema changed; preview and republish this workflow']
+        ? [
+            `Workflow ${w.path}: applied schema changed. Republish or disable this workflow.`,
+          ]
+        : []),
+      ...(w.authBlocked
+        ? [
+            `Workflow ${w.path}: application authentication is unavailable. Set up authentication or disable this workflow.`,
+          ]
         : []),
       ...(w.managementBlocked
         ? ['Schema apply is active or requires operator review']

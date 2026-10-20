@@ -1,9 +1,11 @@
+import { enforceQuota } from '../../operations/quotas.js';
 import { and, desc, eq, inArray } from 'drizzle-orm';
 import type { PlatformDatabase } from '../../database/platform-db/client.js';
 import {
   databaseConnections,
   endpoints,
   projects,
+  projectAuthConfigs,
   schemaMigrations,
   schemaTables,
   workflowEndpoints,
@@ -58,7 +60,14 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         ),
       )
       .limit(1);
+    const [auth] = await this.db
+      .select()
+      .from(projectAuthConfigs)
+      .where(eq(projectAuthConfigs.projectId, projectId));
     return {
+      authBlocked:
+        row.publishedDefinition?.auth === 'authenticated' &&
+        (!auth?.enabled || auth.provisioningStatus !== 'ready'),
       ...row.endpoint,
       publishedDefinition: row.publishedDefinition,
       publishedDependencies: row.publishedDependencies,
@@ -130,6 +139,7 @@ export class PostgresWorkflowRepository implements WorkflowRepository {
         );
       if (existing || resource)
         throw conflict('Runtime resource is already reserved');
+      await enforceQuota(tx, 'workflow_endpoints', projectId);
       const [row] = await tx
         .insert(workflowEndpoints)
         .values({

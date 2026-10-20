@@ -1,3 +1,4 @@
+import { enforceQuota } from '../../operations/quotas.js';
 import { randomUUID } from 'node:crypto';
 import { and, asc, desc, eq, inArray } from 'drizzle-orm';
 import type { PlatformDatabase } from '../../database/platform-db/client.js';
@@ -141,6 +142,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
         )
           throw conflict('Database connection changed');
         await this.idle(tx, projectId);
+        await enforceQuota(tx, 'schema_tables', projectId);
         validateTargetSchema(target.schemaName);
         const draft = normalizeDraft(input);
         const [table] = await tx
@@ -227,17 +229,15 @@ export class PostgresSchemaRepository implements SchemaRepository {
         if (generatePlan(table).hash !== plan.hash)
           throw conflict('Draft or applied revision changed');
         const id = randomUUID();
-        await tx
-          .insert(schemaMigrations)
-          .values({
-            id,
-            projectId,
-            tableId,
-            draftRevision: plan.revision,
-            planHash: plan.hash,
-            definition: plan.definition,
-            status: 'applying',
-          });
+        await tx.insert(schemaMigrations).values({
+          id,
+          projectId,
+          tableId,
+          draftRevision: plan.revision,
+          planHash: plan.hash,
+          definition: plan.definition,
+          status: 'applying',
+        });
         return id;
       }),
     );

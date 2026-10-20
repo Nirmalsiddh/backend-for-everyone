@@ -11,6 +11,7 @@ import {
   ActionState,
   State,
   DirtyGuard,
+  MutationBoundary,
 } from '@/components/ui';
 export default function Workflows() {
   const { id } = useParams<{ id: string }>();
@@ -47,41 +48,43 @@ export default function Workflows() {
           </section>
         ))}
       </State>
-      <section>
-        <h2>Create POST workflow</h2>
-        <DirtyGuard dirty={f.formState.isDirty} />
-        <form
-          onSubmit={f.handleSubmit((v) =>
-            action.run(
-              () =>
-                api<Workflow>(path, 'POST', {
-                  path: v.path,
-                  definition: {
-                    input: {},
-                    auth: 'key_only',
-                    steps: [newStep('response', 'respond', 'key_only')],
-                  },
-                }),
-              (w) => {
-                f.reset();
-                router.push(`/projects/${id}/workflows/${w.id}`);
-              },
-            ),
-          )}
-        >
-          <label>
-            Path slug
-            <input
-              required
-              pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*"
-              maxLength={63}
-              {...f.register('path')}
-            />
-          </label>
-          <button disabled={action.busy}>Create workflow</button>
-        </form>
-        <ActionState action={action} />
-      </section>
+      <MutationBoundary busy={action.busy}>
+        <section>
+          <h2>Create POST workflow</h2>
+          <DirtyGuard dirty={f.formState.isDirty} />
+          <form
+            onSubmit={f.handleSubmit((v) =>
+              action.run(
+                () =>
+                  api<Workflow>(path, 'POST', {
+                    path: v.path,
+                    definition: {
+                      input: {},
+                      auth: 'key_only',
+                      steps: [newStep('response', 'respond', 'key_only')],
+                    },
+                  }),
+                (w) => {
+                  f.reset();
+                  router.push(`/projects/${id}/workflows/${w.id}`);
+                },
+              ),
+            )}
+          >
+            <label>
+              Path slug
+              <input
+                required
+                pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*"
+                maxLength={63}
+                {...f.register('path')}
+              />
+            </label>
+            <button disabled={action.busy}>Create workflow</button>
+          </form>
+          <ActionState action={action} />
+        </section>
+      </MutationBoundary>
     </>
   );
 }

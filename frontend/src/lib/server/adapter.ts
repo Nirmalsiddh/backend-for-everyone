@@ -1,3 +1,4 @@
+import { boundedBody } from './body-limit';
 import { allowedRequest, backendOrigin, requestToken } from './auth-config';
 import { operationFor } from './operations';
 import { randomUUID } from 'node:crypto';
@@ -29,10 +30,15 @@ export async function adapter(
   const url = new URL(request.url);
   let origin: string;
   try {
-    if (!allowedRequest(request)) return fail(403, 'ORIGIN_REJECTED', 'Same-origin request required');
+    if (!allowedRequest(request))
+      return fail(403, 'ORIGIN_REJECTED', 'Same-origin request required');
     origin = backendOrigin();
   } catch {
-    return fail(503, 'DASHBOARD_CONFIGURATION_INVALID', 'Dashboard server configuration is invalid');
+    return fail(
+      503,
+      'DASHBOARD_CONFIGURATION_INVALID',
+      'Dashboard server configuration is invalid',
+    );
   }
   let phase: 'transport' | 'contract' = 'transport';
   try {
@@ -44,7 +50,7 @@ export async function adapter(
       !['http:', 'https:'].includes(target.protocol)
     )
       throw new Error('Invalid origin');
-    const upstreamHeaders = new Headers();
+    const upstreamHeaders = new Headers({ 'x-request-id': requestId });
     if (runtime) {
       const credential = request.headers.get('authorization');
       if (credential) upstreamHeaders.set('authorization', credential);
@@ -63,12 +69,13 @@ export async function adapter(
       return fail(400, 'INVALID_REQUEST', 'Unsupported query parameter');
     let body: string | undefined;
     if (!['GET', 'HEAD'].includes(request.method)) {
-      body = await request.text();
+      body = await boundedBody(request, 65536);
       if (Buffer.byteLength(body, 'utf8') > 65536)
         return fail(413, 'INVALID_REQUEST', 'Request is too large');
       if (body) {
         if (
-          request.headers.get('content-type')?.split(';')[0]?.trim() !== 'application/json'
+          request.headers.get('content-type')?.split(';')[0]?.trim() !==
+          'application/json'
         )
           return fail(400, 'INVALID_REQUEST', 'JSON required');
         upstreamHeaders.set('content-type', 'application/json');
@@ -115,6 +122,8 @@ export async function adapter(
       { status: response.status, headers },
     );
   } catch (error) {
+    if (error instanceof RangeError)
+      return fail(413, 'INVALID_REQUEST', 'Request is too large');
     return fail(
       error instanceof Error && error.name === 'TimeoutError' ? 504 : 503,
       phase === 'contract'

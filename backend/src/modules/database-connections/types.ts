@@ -17,6 +17,7 @@ export interface ConnectionInput extends ConnectionConfig {
 export type TestStatus = 'success' | 'failed';
 
 export interface ConnectionRecord extends EncryptedPayload {
+  revision?: number;
   id: string;
   projectId: string;
   label: string;
@@ -29,6 +30,19 @@ export interface ConnectionRecord extends EncryptedPayload {
 export type ConnectionTester = (config: ConnectionConfig) => Promise<void>;
 
 export interface ConnectionRepository {
+  credentialRequirements?(
+    projectId: string,
+    ownerId: string,
+  ): Promise<{
+    requirements: import('../../database/customer-db/credential-check.js').CredentialRequirements;
+    fingerprint: string;
+  }>;
+  updateCredentials?(
+    record: ConnectionRecord,
+    ownerId: string,
+    expectedRevision: number,
+    fingerprint: string,
+  ): Promise<ConnectionRecord | undefined>;
   replacementStatus?(
     projectId: string,
     ownerId: string,

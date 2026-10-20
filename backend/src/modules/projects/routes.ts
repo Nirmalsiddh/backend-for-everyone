@@ -12,6 +12,7 @@ const projectResponse = {
     ownerId: { type: 'string' },
     name: { type: 'string' },
     slug: { type: 'string' },
+    runtimeState: { type: 'string' },
     createdAt: { type: 'string' },
   },
 } as const;
@@ -106,6 +107,10 @@ export async function projectRoutes(
         response: { 200: projectResponse },
       },
     },
-    (request) => options.service.getById(request.platformPrincipal.userId, request.params.id),
+    (request) =>
+      options.service.getById(
+        request.platformPrincipal.userId,
+        request.params.id,
+      ),
   );
 }

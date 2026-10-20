@@ -29,13 +29,13 @@ Open http://127.0.0.1:3001/signup, create an account, then sign in. Both develop
 
 Frontend server environment:
 
-| Variable | Meaning |
-| --- | --- |
-| `PUBLIC_RUNTIME_ORIGIN` | Public runtime origin displayed by dashboard; HTTPS in hosted secure mode |
-| `BACKEND_ORIGIN` | Fixed Fastify origin, normally `http://127.0.0.1:3000`; no trailing slash, path, query, or embedded credentials |
-| `DASHBOARD_ORIGIN` | Exact canonical dashboard origin, including port; required for Host and Origin checks |
-| `DASHBOARD_COOKIE_MODE` | `local-http` only for explicit localhost HTTP; otherwise secure HTTPS cookies |
-| `DASHBOARD_TRUSTED_CLIENT_IP_HEADER` | Optional ingress-overwritten single IP header; never enable with direct/untrusted ingress access |
+| Variable                             | Meaning                                                                                                         |
+| ------------------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `PUBLIC_RUNTIME_ORIGIN`              | Public runtime origin displayed by dashboard; HTTPS in hosted secure mode                                       |
+| `BACKEND_ORIGIN`                     | Fixed Fastify origin, normally `http://127.0.0.1:3000`; no trailing slash, path, query, or embedded credentials |
+| `DASHBOARD_ORIGIN`                   | Exact canonical dashboard origin, including port; required for Host and Origin checks                           |
+| `DASHBOARD_COOKIE_MODE`              | `local-http` only for explicit localhost HTTP; otherwise secure HTTPS cookies                                   |
+| `DASHBOARD_TRUSTED_CLIENT_IP_HEADER` | Optional ingress-overwritten single IP header; never enable with direct/untrusted ingress access                |
 
 The backend separately needs `PLATFORM_DATABASE_URL` and `CONNECTION_ENCRYPTION_KEY`; see `backend/.env.example`. Never put the encryption key or platform database URL in frontend configuration.
 
@@ -107,16 +107,15 @@ E2E_CUSTOMER_DATABASE_URL=postgresql://USER:PASSWORD@127.0.0.1:5432/dashboard_e2
 npm run test:e2e
 ```
 
-Backend dependencies must be installed too. The harness applies existing migrations, inserts a fixed test operator, generates temporary credentials, and creates a fresh customer schema each run. It does not alter backend `.env`. Test data remains in these disposable databases for inspection; drop the dedicated databases after use. Screenshots on failure contain test data; tracing is disabled to avoid storing request credentials. Unit tests cover DTO redaction, proxy credential separation, route restrictions, precision-preserving schema conversion and workflow references. The browser test exercises the full demo, including ownership, commit/rollback, revocation, disabling, persistence and secret absence.
-
+Backend dependencies must be installed too. The harness applies migrations, creates fresh platform accounts through signup/login, and creates a fresh disposable customer schema each run. It does not alter backend `.env`. Test data remains in these disposable databases for inspection; drop the dedicated databases after use. Screenshots on failure contain test data; tracing is disabled to avoid storing request credentials. Unit tests cover DTO redaction, proxy credential separation, route restrictions, precision-preserving schema conversion and workflow references. The browser test exercises the full demo, including ownership, commit/rollback, revocation, disabling, persistence and secret absence.
 
 ## External tester boundary and reliability
 
-The server-side management token is **not dashboard-user authentication**. Everyone who reaches the dashboard can act as the configured management owner. Keep both processes on loopback. For early external evaluation, prefer separate local installations with dedicated disposable databases, or put the dashboard behind an authenticated private access gateway/VPN with an explicit tester allowlist. Restrict direct access to Fastify management routes too. Set `DASHBOARD_ALLOWED_HOSTS` to the exact gateway host and port, terminate HTTPS at the trusted gateway, and validate the deployment's Host/Origin behavior. Do not share a publicly accessible unauthenticated URL. This milestone does not implement production platform login or multi-tenant operator identity.
+Every developer signs in with an individual platform account. Fastify validates the platform session and scopes management queries to its owner. Hosted access remains restricted to operator-approved tester IPs through Caddy. The frontend forwards only its HttpOnly platform session for management, and only an explicitly supplied runtime credential for Playground requests. There is no shared management owner or fixed management token.
 
 Use disposable/test customer databases and restricted PostgreSQL roles. Connection checks establish connectivity and schema existence only, not every future DDL/CRUD permission. Safe identity and replacement blockers are available through owned connection GET. A previous successful check is historical evidence, not a current health guarantee. Schema/auth/workflow dependencies can block connection replacement; the dashboard does not rebind them.
 
-Disabling SSL makes DB transport unencrypted. Destination/DNS and network-egress hardening remain deferred; only trusted operators may choose connection hosts. Authentication attempt counters are process-local, reset on restart, and see the dashboard relay as a shared client IP. They are not distributed production controls. There is no password reset or email verification. Use HTTPS for remote access; do not enter production credentials during usability testing.
+Disabling SSL makes DB transport unencrypted. Hosted connections require an approved exact remote hostname/port, public DNS answers, DNS pinning and verified TLS on every new connection. Operators manage destination approval. Authentication attempt counters are process-local, reset on restart, and see the dashboard relay as a shared client IP. They are not distributed production controls. There is no password reset or email verification. Use HTTPS for remote access; do not enter production credentials during usability testing.
 
 API-key secrets appear once in a modal dialog with clipboard-error recovery. Login tokens are retained only in transient credential state; responses show safe user information and expiry. Credentials are cleared on logout, reload, and explicit clearing. Late responses are invalidated when clearing or changing target/credential mode. Copying, browser tooling, and screenshots may retain intentional secrets outside the app's state. Failed-test screenshots contain disposable test data; keep artifacts private.
 

@@ -10,6 +10,7 @@ export type Project = {
   name: string;
   slug: string;
   createdAt: string;
+  runtimeState?: 'active' | 'suspended';
 };
 export type FieldType = (typeof fieldTypes)[number];
 export type Field = {
@@ -20,7 +21,9 @@ export type Field = {
   unique?: boolean;
   options?: { length?: number; precision?: number; scale?: number };
   default?:
-    { kind: 'literal'; value: unknown } | { kind: 'current_timestamp' } | null;
+    | { kind: 'literal'; value: unknown }
+    | { kind: 'current_timestamp' }
+    | null;
 };
 export type Table = {
   id: string;
@@ -48,6 +51,7 @@ export type Endpoint = {
   revision: number;
 };
 export type Connection = {
+  revision?: number;
   id: string;
   label: string;
   identity?: {
@@ -71,6 +75,7 @@ export type Auth = {
   blocked?: boolean;
 };
 export type KeyMetadata = {
+  createdAt?: string;
   id: string;
   name: string;
   keyPrefix: string;

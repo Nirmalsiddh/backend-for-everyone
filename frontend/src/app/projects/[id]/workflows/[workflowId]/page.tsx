@@ -1,4 +1,5 @@
 'use client';
+import { MutationBoundary } from '@/components/ui';
 import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useForm, Controller } from 'react-hook-form';
@@ -86,7 +87,7 @@ function Editor({
     return success;
   }
   return (
-    <>
+    <MutationBoundary busy={action.busy}>
       <DirtyGuard
         dirty={f.formState.isDirty}
         save={saveForNavigation}
@@ -262,7 +263,7 @@ function Editor({
         <Json value={def} />
       </details>
       <ActionState action={action} />
-    </>
+    </MutationBoundary>
   );
 }
 export default function WorkflowPage() {

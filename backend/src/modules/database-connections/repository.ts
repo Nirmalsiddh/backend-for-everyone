@@ -1,10 +1,11 @@
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import type { PlatformDatabase } from '../../database/platform-db/client.js';
 import {
   databaseConnections,
   projects,
   projectAuthConfigs,
   schemaTables,
+  schemaMigrations,
   workflowEndpoints,
 } from '../../database/platform-db/schema.js';
 import { ConnectionError } from './errors.js';
@@ -30,6 +31,137 @@ export class PostgresConnectionRepository implements ConnectionRepository {
     );
   }
 
+  async credentialRequirements(projectId: string, ownerId: string) {
+    const connection = await this.findOwned(projectId, ownerId);
+    if (!connection)
+      throw new ConnectionError(
+        404,
+        'CONNECTION_NOT_FOUND',
+        'Database connection not found',
+      );
+    const tables = await this.db
+      .select()
+      .from(schemaTables)
+      .where(eq(schemaTables.projectId, projectId));
+    const [auth] = await this.db
+      .select()
+      .from(projectAuthConfigs)
+      .where(eq(projectAuthConfigs.projectId, projectId));
+    const active = await this.db
+      .select({ id: schemaMigrations.id })
+      .from(schemaMigrations)
+      .where(
+        and(
+          eq(schemaMigrations.projectId, projectId),
+          inArray(schemaMigrations.status, ['applying', 'outcome_unknown']),
+        ),
+      )
+      .limit(1);
+    if (
+      active.length ||
+      (auth &&
+        ['provisioning', 'outcome_unknown'].includes(auth.provisioningStatus))
+    )
+      throw new ConnectionError(
+        409,
+        'SETUP_BUSY',
+        'Resolve active or uncertain setup operations before updating credentials',
+      );
+    return {
+      requirements: {
+        schemas: tables
+          .filter((t) => t.appliedDefinition)
+          .map((t) => ({
+            name: t.name,
+            catalog: t.appliedDefinition!.catalog,
+          })),
+        auth: auth
+          ? {
+              users: auth.authUsersTableName,
+              sessions: auth.authSessionsTableName,
+              catalog: auth.catalog,
+            }
+          : null,
+      },
+      fingerprint: JSON.stringify({
+        tables: tables
+          .map((t) => [t.id, t.draftRevision, t.appliedRevision])
+          .sort(),
+        auth: auth ? [auth.id, auth.revision, auth.provisioningStatus] : null,
+      }),
+    };
+  }
+  async updateCredentials(
+    record: ConnectionRecord,
+    ownerId: string,
+    expectedRevision: number,
+    fingerprint: string,
+  ) {
+    return this.db.transaction(async (tx) => {
+      await tx
+        .select({ id: databaseConnections.id })
+        .from(databaseConnections)
+        .where(this.owned(record.projectId, ownerId))
+        .for('update');
+      // A second snapshot under the connection lock detects schema/auth edits during network validation.
+      const tables = await tx
+        .select()
+        .from(schemaTables)
+        .where(eq(schemaTables.projectId, record.projectId));
+      const [auth] = await tx
+        .select()
+        .from(projectAuthConfigs)
+        .where(eq(projectAuthConfigs.projectId, record.projectId));
+      const current = JSON.stringify({
+        tables: tables
+          .map((t) => [t.id, t.draftRevision, t.appliedRevision])
+          .sort(),
+        auth: auth ? [auth.id, auth.revision, auth.provisioningStatus] : null,
+      });
+      const active = await tx
+        .select({ id: schemaMigrations.id })
+        .from(schemaMigrations)
+        .where(
+          and(
+            eq(schemaMigrations.projectId, record.projectId),
+            inArray(schemaMigrations.status, ['applying', 'outcome_unknown']),
+          ),
+        )
+        .limit(1);
+      if (
+        current !== fingerprint ||
+        active.length ||
+        (auth &&
+          ['provisioning', 'outcome_unknown'].includes(auth.provisioningStatus))
+      )
+        throw new ConnectionError(
+          409,
+          'SETUP_CHANGED',
+          'Setup changed during credential validation; refresh and review',
+        );
+      const [saved] = await tx
+        .update(databaseConnections)
+        .set({
+          encryptedConfig: record.encryptedConfig,
+          encryptionIv: record.encryptionIv,
+          encryptionTag: record.encryptionTag,
+          encryptionVersion: record.encryptionVersion,
+          revision: expectedRevision + 1,
+          lastTestStatus: 'success',
+          lastTestedAt: record.lastTestedAt,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            this.owned(record.projectId, ownerId),
+            eq(databaseConnections.id, record.id),
+            eq(databaseConnections.revision, expectedRevision),
+          ),
+        )
+        .returning();
+      return saved;
+    });
+  }
   async replacementStatus(projectId: string, ownerId: string) {
     const connection = await this.findOwned(projectId, ownerId);
     if (!connection)
@@ -117,6 +249,7 @@ export class PostgresConnectionRepository implements ConnectionRepository {
         .update(databaseConnections)
         .set({
           label: record.label,
+          revision: sql`${databaseConnections.revision} + 1`,
           encryptedConfig: record.encryptedConfig,
           encryptionIv: record.encryptionIv,
           encryptionTag: record.encryptionTag,

@@ -3,6 +3,7 @@ export interface Project {
   ownerId: string;
   name: string;
   slug: string;
+  runtimeState?: string;
   createdAt: Date;
 }
 

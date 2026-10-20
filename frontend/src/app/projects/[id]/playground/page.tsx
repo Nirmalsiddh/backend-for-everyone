@@ -166,6 +166,14 @@ function Playground() {
       : policy.mode === 'key_only'
         ? 'key'
         : 'session';
+  const noWritablePatch =
+    target?.method === 'PATCH' &&
+    deployedOperation?.operation.requestBody?.content['application/json']
+      ?.schema.properties &&
+    !Object.keys(
+      deployedOperation.operation.requestBody.content['application/json']!
+        .schema.properties!,
+    ).length;
   const handoff = search.get('operationId');
   const handled = useRef('');
   useEffect(() => {
@@ -508,11 +516,28 @@ function Playground() {
                         d?.code ?? 'REQUEST_FAILED',
                         d?.message ?? 'Request failed',
                         response.headers.get('x-request-id') ?? undefined,
+                        Number(response.headers.get('retry-after')) ||
+                          undefined,
+                        `${target.id} ${target.method}`,
+                        id,
                       ),
                     );
                   }
                 } catch (err) {
-                  if (sequence.current(request.id)) setError(err);
+                  if (sequence.current(request.id))
+                    setError(
+                      err instanceof ApiError
+                        ? err
+                        : new ApiError(
+                            0,
+                            'RESPONSE_UNCONFIRMED',
+                            'Response could not be confirmed',
+                            undefined,
+                            undefined,
+                            `${target?.id ?? 'runtime'} ${target?.method ?? ''}`,
+                            id,
+                          ),
+                    );
                 } finally {
                   if (sequence.current(request.id)) setBusy(false);
                   if (
@@ -667,13 +692,18 @@ function Playground() {
               >
                 Clear credentials and response
               </button>
-              <button disabled={busy || !target}>
+              <button disabled={busy || !target || !!noWritablePatch}>
                 {busy ? 'Sending…' : 'Send request'}
               </button>
             </form>
           </State>
         </State>
       </State>
+      {noWritablePatch && (
+        <p role="status">
+          This update operation currently has no writable fields.
+        </p>
+      )}
       {session && (
         <section>
           <h2>Active application session</h2>

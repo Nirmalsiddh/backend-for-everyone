@@ -1,3 +1,4 @@
+import { projectAuthConfigs } from '../../src/database/platform-db/schema.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { randomUUID } from 'node:crypto';
@@ -46,6 +47,9 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
         .delete(schemaTables)
         .where(eq(schemaTables.projectId, projectId));
       await db
+        .delete(projectAuthConfigs)
+        .where(eq(projectAuthConfigs.projectId, projectId));
+      await db
         .delete(databaseConnections)
         .where(eq(databaseConnections.projectId, projectId));
       await db.delete(projects).where(eq(projects.id, projectId));
@@ -60,28 +64,24 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     ),
   });
   await db.insert(users).values({ id: owner, email: `${owner}@example.test` });
-  await db
-    .insert(projects)
-    .values({
-      id: projectId,
-      ownerId: owner,
-      name: 'Docs',
-      slug: `docs-${projectId}`,
-    });
+  await db.insert(projects).values({
+    id: projectId,
+    ownerId: owner,
+    name: 'Docs',
+    slug: `docs-${projectId}`,
+  });
   // Deliberately unusable connection: docs generation must not decrypt or connect.
-  await db
-    .insert(databaseConnections)
-    .values({
-      id: connectionId,
-      projectId,
-      label: 'Unused',
-      encryptedConfig: 'secret-encrypted-fixture',
-      encryptionIv: '11'.repeat(12),
-      encryptionTag: '11'.repeat(12),
-      encryptionVersion: 1,
-      lastTestStatus: 'success',
-      lastTestedAt: new Date(),
-    });
+  await db.insert(databaseConnections).values({
+    id: connectionId,
+    projectId,
+    label: 'Unused',
+    encryptedConfig: 'secret-encrypted-fixture',
+    encryptionIv: '11'.repeat(12),
+    encryptionTag: '11'.repeat(12),
+    encryptionVersion: 1,
+    lastTestStatus: 'success',
+    lastTestedAt: new Date(),
+  });
   const input = snapshot(),
     fields = input.resources[0]!.fields!.map((f) => ({
       ...f,
@@ -92,18 +92,16 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     name: 'tasks',
     fields,
   };
-  await db
-    .insert(schemaTables)
-    .values({
-      id: tableId,
-      projectId,
-      connectionId,
-      schemaName: definition.schema,
-      name: 'tasks',
-      draftRevision: 1,
-      appliedRevision: 1,
-      appliedDefinition: { definition, catalog: { secret: 'catalog-secret' } },
-    });
+  await db.insert(schemaTables).values({
+    id: tableId,
+    projectId,
+    connectionId,
+    schemaName: definition.schema,
+    name: 'tasks',
+    draftRevision: 1,
+    appliedRevision: 1,
+    appliedDefinition: { definition, catalog: { secret: 'catalog-secret' } },
+  });
   await db
     .insert(schemaFields)
     .values(
@@ -114,26 +112,22 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     ownerFieldId: fields[2]!.id,
     allowAdmin: false,
   };
-  await db
-    .insert(endpoints)
-    .values({
-      projectId,
-      tableId,
-      resourceName: 'tasks',
-      enabledOperations: ['list', 'create', 'update'],
-      policies: { list: policy, create: policy, update: policy },
-    });
+  await db.insert(endpoints).values({
+    projectId,
+    tableId,
+    resourceName: 'tasks',
+    enabledOperations: ['list', 'create', 'update'],
+    policies: { list: policy, create: policy, update: policy },
+  });
   const published = input.workflows[0]!.definition!;
-  await db
-    .insert(workflowEndpoints)
-    .values({
-      id: workflowId,
-      projectId,
-      connectionId,
-      path: 'place-order',
-      enabled: true,
-      draftDefinition: published,
-    });
+  await db.insert(workflowEndpoints).values({
+    id: workflowId,
+    projectId,
+    connectionId,
+    path: 'place-order',
+    enabled: true,
+    draftDefinition: published,
+  });
   const [version] = await db
     .insert(workflowVersions)
     .values({
@@ -150,6 +144,20 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     .where(eq(workflowEndpoints.id, workflowId));
   const repo = new PostgresDocsRepository(db),
     service = new DocsService(repo, 'https://api.example.test');
+  await db
+    .insert(projectAuthConfigs)
+    .values({
+      projectId,
+      connectionId,
+      enabled: true,
+      signupEnabled: true,
+      provisioningStatus: 'ready',
+      authUsersTableName:
+        'platform_auth_users_' + projectId.replaceAll('-', ''),
+      authSessionsTableName:
+        'platform_auth_sessions_' + projectId.replaceAll('-', ''),
+      catalog: {},
+    });
   const initial = await service.get(projectId, owner);
   assert.equal(
     (
@@ -229,17 +237,15 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
   const disabled = await service.get(projectId, owner);
   assert.ok(!disabled.paths['/tasks']!.post);
   assert.ok(!disabled.paths['/tasks/{id}']);
-  await db
-    .insert(schemaMigrations)
-    .values({
-      id: randomUUID(),
-      projectId,
-      tableId,
-      draftRevision: 2,
-      planHash: 'c'.repeat(64),
-      definition: updated,
-      status: 'outcome_unknown',
-    });
+  await db.insert(schemaMigrations).values({
+    id: randomUUID(),
+    projectId,
+    tableId,
+    draftRevision: 2,
+    planHash: 'c'.repeat(64),
+    definition: updated,
+    status: 'outcome_unknown',
+  });
   await assert.rejects(service.get(projectId, owner), {
     code: 'API_DOCS_UNAVAILABLE',
   });

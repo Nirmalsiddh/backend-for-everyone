@@ -11,7 +11,12 @@ export function OperationExamples({
 }) {
   const examples = operationExamples(document, operationId);
   if (!examples)
-    return <p>Could not generate examples for this deployed operation.</p>;
+    return (
+      <p>
+        This operation has no usable generated example. An update operation may
+        have no writable fields. Review its deployed schema.
+      </p>
+    );
   return (
     <details>
       <summary>Integration examples</summary>

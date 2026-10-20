@@ -34,6 +34,9 @@ export function generate(
   for (const w of snapshot.workflows)
     if (
       !w.definition ||
+      (w.definition.auth === 'authenticated' &&
+        (!snapshot.auth?.enabled ||
+          snapshot.auth.provisioningStatus !== 'ready')) ||
       w.dependencies.some(
         (d) =>
           !snapshot.tables.some(

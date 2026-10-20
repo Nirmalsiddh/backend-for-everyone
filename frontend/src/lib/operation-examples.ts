@@ -19,6 +19,12 @@ export function operationExamples(doc: OpenApiDocument, operationId: string) {
   if (schemes.length)
     headers.Authorization = `Bearer ${schemes.includes('ProjectApiKey') ? '<PROJECT_API_KEY>' : '<APPLICATION_SESSION_TOKEN>'}`;
   const media = operation.requestBody?.content['application/json'];
+  if (
+    method === 'patch' &&
+    media &&
+    !Object.keys(media.schema.properties ?? {}).length
+  )
+    return null;
   // The generated deployed document supplies synthetic examples; never use form values or responses.
   const body = media ? (media.example ?? {}) : undefined;
   if (media) headers['Content-Type'] = 'application/json';

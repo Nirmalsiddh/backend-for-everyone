@@ -179,6 +179,10 @@ test('PATCH excludes owner fields from other policies; defaults stay private; ke
   input.auth!.signupEnabled = false;
   assert.ok(!generate(input, origin).paths['/auth/signup']);
   input.auth!.enabled = false;
+  assert.throws(() => generate(input, origin), {
+    code: 'API_DOCS_UNAVAILABLE',
+  });
+  input.workflows = [];
   assert.ok(!generate(input, origin).paths['/auth/login']);
 });
 test('workflow overlapping branches, 204, dynamic fallback and known references', () => {

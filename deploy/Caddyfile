@@ -13,6 +13,20 @@
 }
 
 {$APP_DOMAIN} {
+  request_body {
+    max_size 65536
+  }
+  @maintenance {
+    file {
+      root /srv/maintenance
+      try_files enabled
+    }
+    not remote_ip {$SMOKE_OPERATOR_CIDRS}
+  }
+  handle @maintenance {
+    respond "Private alpha maintenance" 503
+  }
+
   header {
     X-Content-Type-Options nosniff
     Referrer-Policy strict-origin-when-cross-origin
@@ -28,6 +42,7 @@
       header_up X-Real-IP {remote_host}
       header_up X-Forwarded-For {remote_host}
       header_up -Forwarded
+      header_up -X-Request-Id
     }
   }
   handle {
@@ -36,6 +51,20 @@
 }
 
 {$API_DOMAIN} {
+  request_body {
+    max_size 65536
+  }
+  @maintenance {
+    file {
+      root /srv/maintenance
+      try_files enabled
+    }
+    not remote_ip {$SMOKE_OPERATOR_CIDRS}
+  }
+  handle @maintenance {
+    respond "Private alpha maintenance" 503
+  }
+
   header {
     X-Content-Type-Options nosniff
     Referrer-Policy strict-origin-when-cross-origin
@@ -47,6 +76,7 @@
       header_up X-Real-IP {remote_host}
       header_up X-Forwarded-For {remote_host}
       header_up -Forwarded
+      header_up -X-Request-Id
     }
   }
   handle {
