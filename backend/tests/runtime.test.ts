@@ -28,10 +28,12 @@ test('runtime bodies enforce applied fields, defaults, nullability and exact sca
 test('safe list parameters allow bounded pagination, scalar sorting, and at most five equality filters', () => {
   const parsed = validateList(definition, { limit: '2', offset: '3', sort: 'price', direction: 'desc', 'filter[sku]': "x' OR 1=1 --", 'filter[active]': 'false' });
   assert.equal(parsed.limit, 2); assert.equal(parsed.direction, 'DESC');
-  assert.deepEqual(parsed.filters[1], { field: 'active', value: false });
+  assert.equal(parsed.filters[1]!.kind, 'comparison');
+  assert.equal(parsed.filters[1]!.field.name, 'active');
+  assert.equal(parsed.filters[1]!.kind === 'comparison' && parsed.filters[1]!.value, false);
   for (const query of [ { limit: '101' }, { limit: '0' }, { offset: '10001' }, { limit: ['2', '3'] }, { sort: 'payload' }, { sort: 'sku; DROP TABLE products' },
     { direction: 'asc; DROP TABLE products' }, { 'filter[payload]': '{}' }, { 'filter[unknown]': 'x' }, { 'filter[active]': 'null' },
-    { 'filter[sku][eq]': 'x' }, { search: 'x' }, { 'filter[sku]': ['a', 'b'] },
+ { search: 'x' }, { 'filter[sku]': ['a', 'b'] },
     { 'filter[sku]': 'x', 'filter[price]': '0', 'filter[counter]': '1', 'filter[active]': 'true', 'filter[birthday]': '2026-01-01', 'filter[id]': randomUUID() },
   ]) assert.throws(() => validateList(definition, query), { statusCode: 400 });
 });

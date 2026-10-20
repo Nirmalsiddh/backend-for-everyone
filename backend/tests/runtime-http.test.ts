@@ -36,6 +36,13 @@ test('runtime HTTP authentication, fixed routing, CORS, errors, and safe logging
     const preflight = await app.inject({ method: 'OPTIONS', url: base, headers: { origin: 'https://frontend.example', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization,content-type' } });
     assert.equal(preflight.statusCode, 204); assert.equal(preflight.headers['access-control-allow-origin'], 'https://frontend.example');
     assert.equal((await app.inject({ method: 'OPTIONS', url: base, headers: { origin: 'https://untrusted.example' } })).headers['access-control-allow-origin'], undefined);
+    const beforeInvalid = calls;
+    for (const suffix of ['filter[sku][wat]=secret', 'filter[sku][eq][x]=secret', 'filter[sku][in]=[]', 'filter[sku][eq]=a&filter[sku][eq]=a', 'filter[sku]=a&filter[sku][eq]=a']) {
+      const invalid = await app.inject({ url: `${base}?${suffix}`, headers });
+      assert.equal(invalid.statusCode, 400); assert.equal(invalid.json().code, 'INVALID_FILTER');
+      assert.ok(invalid.json().requestId); assert.ok(!invalid.body.includes('secret'));
+    }
+    assert.equal(calls, beforeInvalid);
     const list = await app.inject({ url: base, headers });
     assert.equal(list.statusCode, 200); assert.equal(list.json().data[0].sku, 'ABC'); assert.ok(!list.body.includes('external_secret'));
     const created = await app.inject({ method: 'POST', url: base, headers, payload: { sku: 'ABC' } });

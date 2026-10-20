@@ -2,6 +2,15 @@
 
 A PostgreSQL-backed API builder, with a management API foundation, encrypted customer PostgreSQL connection management, a Schema Builder MVP, predefined runtime APIs, customer-owned end-user authentication, and custom transactional workflows. Customer application data will remain in customer-owned databases; platform PostgreSQL stores management metadata only.
 
+## v0.10.0-alpha.1 — Advanced Querying MVP
+
+Generated list APIs support typed equality/inequality, numeric/date/time ranges,
+bounded JSON-array IN filters, and explicit NULL checks. Five clauses combine
+with AND; existing single-field sorting, offset pagination, ownership, includes,
+index drift protection and workflows retain their contracts. No migration is needed.
+See [the query contract](ADVANCED_QUERYING.md) and
+[validation evidence](ADVANCED_QUERYING_VALIDATION.md). No external deployment.
+
 ## v0.9.0-alpha.1 — Managed Indexes & Safer Schema Evolution
 
 Managed B-tree indexes support one to four ordered UUID, integer, bigint, boolean,
@@ -292,7 +301,7 @@ Bodies use applied schema field names directly. Unknown fields and supplied `id`
 
 Text/varchar and UUID use strings; integer uses a JSON integer; bigint/decimal use exact decimal strings; boolean uses JSON booleans; date uses real `YYYY-MM-DD` values; timestamp requires timezone-aware ISO input and is returned as a UTC ISO string at JavaScript millisecond precision. JSONB uses JSON values. Varchar, numeric, JSON size/depth, and scalar validation reuse the Schema Builder limits. Runtime bodies retain the 64 KiB HTTP limit. Bigint/decimal/date projections avoid implicit driver number/date conversion.
 
-List accepts only `limit`, `offset`, `sort`, `direction`, and literal equality-filter query keys:
+List accepts `limit`, `offset`, `sort`, `direction`, optional relationship `include`, and the bounded filter grammar documented in [Advanced Querying](ADVANCED_QUERYING.md). Legacy equality remains supported:
 
 ```text
 /api/my-shop/products?limit=25&offset=0&sort=price&direction=desc&filter[active]=true
@@ -300,7 +309,7 @@ List accepts only `limit`, `offset`, `sort`, `direction`, and literal equality-f
 
 Defaults are limit 25, offset 0, and id ascending. Limit is 1–100; offset is 0–10,000. One applied scalar sort field is allowed; JSONB sorting is rejected. Custom sort uses id ascending as a tie-breaker, with nulls last. Numeric fields sort by their PostgreSQL numeric columns, even though responses represent them as strings. Offset pagination can move between requests when rows change.
 
-At most five scalar equality filters are combined with AND. Query values are validated against their field types. Duplicate query keys, unknown fields, nested operators, JSONB filters, SQL-null filters, and unknown query options are rejected. A text filter value `null` is literal text, not SQL NULL. No OR, IN, ranges, search, regex, joins, or JSON paths are supported.
+At most five typed filter clauses combine with AND. Explicit `eq`, `neq`, approved numeric/date/time comparisons, bounded `in` JSON arrays, and nullable-field `is_null` checks are supported according to the applied type matrix. Duplicate query keys/operator pairs, unknown fields/operators, deeper nesting, JSONB filters, and unknown query options are rejected. A text equality value `null` remains literal text; SQL NULL uses `is_null=true|false`. No OR, search, regex, joins, related-field filtering, or JSON paths are supported.
 
 List returns `{ "data": [...], "pagination": { "limit": 25, "offset": 0, "hasMore": false } }`. It fetches one extra row and does not calculate total counts. GET by ID, PATCH, and DELETE validate the UUID and target exactly that key. DELETE uses RETURNING id internally and returns no body. Updates use last-write-wins behavior; bulk operations, upserts, optimistic row versions, and idempotency keys are deferred.
 

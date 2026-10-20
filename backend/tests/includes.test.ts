@@ -2,7 +2,8 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { parseInclude } from '../src/runtime/include.js';
 import { authorizeRead } from '../src/runtime/authorization.js';
-import { selectByIds } from '../src/runtime/queries.js';
+import { validateList } from '../src/runtime/validation.js';
+import { selectList, selectByIds } from '../src/runtime/queries.js';
 import { RuntimeService } from '../src/runtime/service.js';
 import { createRuntimeExecutor } from '../src/database/customer-db/runtime-executor.js';
 import { CredentialEncryption } from '../src/security/encryption.js';
@@ -68,7 +69,9 @@ for (const size of [1, 25, 100]) for (const count of [0, 1, 2]) test(`batch boun
     if (text.includes('ANY($1')) { dataQueries.push({ text, ...(values ? { values } : {}) }); return { rows: [{ id: uuid, owner_id: uuid, private_extra: 'not projected' }] }; }
     return { rows: text.includes('SELECT c.relkind') ? catalog.relation : [] };
   } };
-  const result = await createRuntimeExecutor(() => client)(config, applied, { text: 'SELECT parent', values: [] }, undefined, count ? {
+  const query = selectList(definition, validateList(definition, { 'filter[owner_id][in]': JSON.stringify([uuid]), 'filter[id][neq]': uuid, limit: String(size) }));
+  const compiledClient = { ...client, query: (text: string, values?: unknown[]) => client.query(text === query.text ? 'SELECT parent' : text, values) };
+  const result = await createRuntimeExecutor(() => compiledClient)(config, applied, query, undefined, count ? {
     includes: ['billing_customer_id', 'shipping_customer_id'].slice(0, count).map((name) => ({ name, applied })), limit: size,
     fence: async () => { fenced = true; },
   } : undefined);

@@ -208,6 +208,7 @@ test('Tasks chooser preserves unsaved edits when overwrite is declined', async (
     .click();
   await expect(page).toHaveURL(/projects\/[a-f0-9-]{36}$/);
   await page
+    .getByRole('complementary')
     .getByRole('link', { name: 'Tables & fields', exact: true })
     .click();
   await page.getByLabel('Table name', { exact: true }).fill('unsaved_work');

@@ -13,10 +13,20 @@ export function OperationExamples({
   operationId: string;
   includes?: string[];
 }) {
+  const [queryExample, setQueryExample] = useState<'ordinary' | 'legacy' | 'range' | 'in' | 'null'>('ordinary');
   const [selected, setSelected] = useState<string[]>([]);
   const choices = includeOptions(operationById(document, operationId)?.operation);
   const current = includes ?? selected.filter((name) => choices.includes(name));
-  const examples = operationExamples(document, operationId, current);
+  const queryFields = operationById(document, operationId)?.operation['x-runtime-query']?.fields ?? [];
+  const queryChoices = [
+    { value: 'ordinary', label: 'Without filters', enabled: true },
+    { value: 'legacy', label: 'Legacy equality', enabled: queryFields.length > 0 },
+    { value: 'range', label: 'Range', enabled: queryFields.some((field) => field.operators.includes('gte')) },
+    { value: 'in', label: 'IN', enabled: queryFields.some((field) => field.operators.includes('in')) },
+    { value: 'null', label: 'NULL', enabled: queryFields.some((field) => field.operators.includes('is_null')) },
+  ].filter((choice) => choice.enabled);
+  const currentQuery = queryChoices.some((choice) => choice.value === queryExample) ? queryExample : 'ordinary';
+  const examples = operationExamples(document, operationId, current, currentQuery);
   if (!examples)
     return (
       <p>
@@ -27,6 +37,9 @@ export function OperationExamples({
   return (
     <details>
       <summary>Integration examples</summary>
+      {operationById(document, operationId)?.operation['x-runtime-query'] && <label>Query example<select value={currentQuery} onChange={(event) => setQueryExample(event.target.value as typeof queryExample)}>
+        {queryChoices.map((choice) => <option key={choice.value} value={choice.value}>{choice.label}</option>)}
+      </select></label>}
       {includes === undefined && choices.length > 0 && <fieldset><legend>Include (maximum two)</legend>
         {choices.map((name) => <label key={name}><input type="checkbox" checked={current.includes(name)}
           disabled={!current.includes(name) && current.length >= 2}

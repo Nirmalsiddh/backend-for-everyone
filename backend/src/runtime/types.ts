@@ -1,5 +1,5 @@
 import type { SessionGuard, UserPrincipal } from '../modules/project-auth/types.js';
-import type { AppliedDefinition } from '../modules/schema-builder/types.js';
+import type { AppliedDefinition, FieldDefinition } from '../modules/schema-builder/types.js';
 import type { ConnectionConfig, ConnectionRecord } from '../modules/database-connections/types.js';
 import type { Operation, OperationPolicy } from '../modules/endpoints/types.js';
 import type { Ownership } from './authorization.js';
@@ -18,7 +18,13 @@ export interface RuntimeRepository {
   resolve(projectId: string, resource: string, includes?: string[]): Promise<RuntimeTarget | undefined>;
 }
 export interface Query { text: string; values: unknown[] }
-export interface ListOptions { limit: number; offset: number; sort: string; direction: 'ASC' | 'DESC'; filters: { field: string; value: unknown }[] }
+export type FilterScalar = string | number | boolean;
+export type ResolvedFilter = { field: FieldDefinition } & (
+  { kind: 'comparison'; operator: 'eq' | 'neq' | 'gt' | 'gte' | 'lt' | 'lte'; value: FilterScalar } |
+  { kind: 'membership'; operator: 'in'; values: FilterScalar[] } |
+  { kind: 'null'; operator: 'is_null'; isNull: boolean }
+);
+export interface ListOptions { limit: number; offset: number; sort: string; direction: 'ASC' | 'DESC'; filters: ResolvedFilter[] }
 export interface ExpandedRead {
   includes: { name: string; applied: AppliedDefinition; ownership?: Ownership | undefined }[];
   limit?: number | undefined;

@@ -24,6 +24,7 @@ export interface ApiOperation {
   summary: string;
   description: string;
   security: Record<string, string[]>[];
+  'x-runtime-query'?: import('./runtime-query.js').QueryCapabilities;
   'x-access-policy': 'public' | 'key_only' | 'authenticated' | 'owner';
   parameters?: {
     name: string;

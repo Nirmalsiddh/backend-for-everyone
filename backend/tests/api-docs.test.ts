@@ -363,3 +363,20 @@ test('relationship includes validate as bounded optional nonrecursive OpenAPI re
   const incompatible = generate(input, origin);
   assert.ok(!incompatible.paths['/tasks/{id}']!.get!.parameters?.some((parameter) => parameter.name === 'include'));
 });
+
+
+test('advanced query extension is additive, applied, compact and contains only public capabilities', async () => {
+  const doc = generate(snapshot(), origin);
+  const operation = doc.paths['/tasks']!.get!;
+  const capabilities = operation['x-runtime-query']!;
+  assert.equal(capabilities.version,1); assert.equal(capabilities.maxClauses,5); assert.equal(capabilities.maxInValues,25);
+  assert.deepEqual(capabilities.fields.find((field)=>field.name==='owner_id')!.operators,['eq','neq','in']);
+  assert.ok(operation.parameters!.some((parameter)=>parameter.name==='filter[owner_id]'));
+  assert.ok(!operation.parameters!.some((parameter)=>/\]\[/.test(parameter.name)));
+  const serialized = JSON.stringify(capabilities);
+  for (const privateKey of ['internal-field-','schema','column','fieldId','constraint','index']) assert.ok(!serialized.includes(privateKey));
+  for (const field of capabilities.fields) for (const operator of field.operators) {
+    assert.ok(['eq','neq','gt','gte','lt','lte','in','is_null'].includes(operator));
+  }
+  assert.equal((await new Validator().validate(doc as unknown as Record<string,unknown>)).valid,true);
+});

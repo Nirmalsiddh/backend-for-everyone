@@ -142,6 +142,7 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     key = (await app.inject({ method: 'POST', url: `${management}/api-keys`, headers: auth, payload: { name: 'Server', scope: 'read_write' } })).json().key;
     assert.equal((await app.inject({ url: `${base}/orders`, headers: bearer(key) })).statusCode, 200);
     assert.equal((await app.inject({ url: `${base}/orders`, headers: bearer(aliceToken) })).statusCode, 401);
+    assert.equal((await app.inject({ url: `${base}/orders?filter[title][neq]=hidden`, headers: bearer(aliceToken) })).statusCode,401);
     for (const ownerId of [randomUUID(), orders.table.fields[1].id]) {
       const invalid = await app.inject({ method: 'PUT', url: `${ordersPath}/api`, headers: auth, payload: { enabledOperations: operations, expectedAppliedRevision: 1, expectedConfigRevision: 1, policies: { get: { mode: 'owner', ownerFieldId: ownerId, allowAdmin: false } } } }); assert.equal(invalid.statusCode, 400, invalid.body);
     }
@@ -190,6 +191,9 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     assert.equal((await app.inject({ method: 'PATCH', url: `${base}/orders/${aliceOrder}`, headers: bearer(aliceToken), payload: { owner_id: bobId } })).statusCode, 400);
     assert.equal((await app.inject({ method: 'PATCH', url: `${base}/orders/${aliceOrder}`, headers: bearer(aliceToken), payload: { title: 'Alice edited' } })).statusCode, 200);
     const temp = await create(aliceToken, 'delete-me'); assert.equal((await app.inject({ method: 'DELETE', url: `${base}/orders/${temp.json().id}`, headers: bearer(aliceToken) })).statusCode, 204);
+    const advanced = new URLSearchParams({ 'filter[owner_id][neq]': aliceId });
+    const narrowed = await app.inject({ url: `${base}/orders?${advanced}`, headers: bearer(aliceToken) });
+    assert.equal(narrowed.statusCode, 200, narrowed.body); assert.deepEqual(narrowed.json().data, []);
     const filtered = await app.inject({ url: `${base}/orders?filter[title]=${encodeURIComponent("x' OR true --")}`, headers: bearer(aliceToken) }); assert.equal(filtered.json().data.length, 0);
   });
   await t.test('independent relationship GET credential, owner and admin matrix', async () => {
@@ -218,6 +222,12 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
           for (const identity of [{ token: readKey, user: false, admin: false }, { token: key, user: false, admin: false }, { token: aliceToken, user: true, admin: false }, { token: aliceToken, user: true, admin: true }]) {
             await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role=$1 WHERE id=$2`, [identity.admin ? 'admin' : 'user', aliceId]);
             const result = await read(identity.token);
+            const advancedList = await app.inject({ url: `${base}/order_refs?include=order_id&filter[order_id][in]=${encodeURIComponent(JSON.stringify([bobOrder]))}&sort=owner_id&limit=1`, headers: bearer(identity.token) });
+            assert.equal(advancedList.statusCode, result.statusCode, advancedList.body);
+            if (result.statusCode === 200) {
+              assert.equal(advancedList.json().data.length, 1);
+              assert.deepEqual(advancedList.json().data[0]._related, result.json()._related);
+            }
             const parentCompatible = (parentMode === 'key_only') !== identity.user;
             const targetCompatible = targetMode !== 'disabled' && ((targetMode === 'key_only') !== identity.user);
             assert.equal(result.statusCode, !parentCompatible ? 401 : !targetCompatible ? 403 : 200, result.body);
@@ -275,6 +285,8 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
       const revoked = await app.inject({ method: 'DELETE', url: management + '/api-keys/' + readKeyRecord.id, headers: auth });
       assert.equal(revoked.statusCode, 204, revoked.body);
       assert.equal((await read(readKey)).statusCode, 401);
+      assert.equal((await app.inject({ url: `${base}/order_refs?filter[order_id][eq]=${bobOrder}`, headers: bearer(readKey) })).statusCode,401);
+      assert.equal((await app.inject({ url: `/api/not-this-project/order_refs?filter[order_id][eq]=${bobOrder}`, headers: bearer(key) })).statusCode,401);
       assert.equal((await read(auth.authorization.slice('Bearer '.length))).statusCode, 401);
     } finally {
       await db.update(endpoints).set({ enabledOperations: target.enabledOperations, policies: target.policies ?? {} }).where(eq(endpoints.id, target.id));
@@ -288,12 +300,16 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     const promoted = await app.inject({ method: 'PATCH', url: rolePath, headers: auth, payload: { role: 'admin' } }); assert.equal(promoted.statusCode, 200, promoted.body); sensitive(promoted.body);
     assert.equal((await app.inject({ url: `${base}/auth/me`, headers: bearer(aliceToken) })).json().role, 'admin');
     assert.equal((await app.inject({ url: `${base}/orders/${bobOrder}`, headers: bearer(aliceToken) })).statusCode, 404);
+    const ownerQuery = new URLSearchParams({ 'filter[owner_id][in]': JSON.stringify([bobId]) });
+    assert.deepEqual((await app.inject({ url: `${base}/orders?${ownerQuery}`, headers: bearer(aliceToken) })).json().data, []);
     await savePolicies(true);
+    assert.equal((await app.inject({ url: `${base}/orders?${ownerQuery}`, headers: bearer(aliceToken) })).json().data[0].id, bobOrder);
     const disabled = await app.inject({ method: 'PUT', url: `${ordersPath}/api`, headers: auth, payload: {
       enabledOperations: operations.filter((op) => op !== 'get'), expectedAppliedRevision: 1, expectedConfigRevision: endpointRevision,
     } }); assert.equal(disabled.statusCode, 200, disabled.body); endpointRevision = disabled.json().revision;
     assert.equal((await app.inject({ url: `${base}/orders/${bobOrder}`, headers: bearer(aliceToken) })).statusCode, 404);
     await savePolicies(true);
+    assert.equal((await app.inject({ url: `${base}/orders?${ownerQuery}`, headers: bearer(aliceToken) })).json().data[0].id, bobOrder);
     assert.equal((await app.inject({ url: `${base}/orders`, headers: bearer(aliceToken) })).json().data.length, 2);
     assert.equal((await app.inject({ url: `${base}/orders/${bobOrder}`, headers: bearer(aliceToken) })).statusCode, 200);
     assert.equal((await app.inject({ method: 'PATCH', url: `${base}/orders/${bobOrder}`, headers: bearer(aliceToken), payload: { title: 'Admin edited' } })).statusCode, 200);
@@ -324,9 +340,14 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     await customer.query(`UPDATE ${q(schema)}.${q(sessionsName)} SET expires_at = CURRENT_TIMESTAMP - INTERVAL '1 second' WHERE token_hash=$1`, [tokenHash(expired)]);
     assert.equal((await app.inject({ url: `${base}/auth/me`, headers: bearer(expired) })).statusCode, 401);
     assert.equal((await app.inject({ url: `${base}/orders`, headers: bearer(expired) })).statusCode, 401);
+    assert.equal((await app.inject({ url: `${base}/orders?filter[title][neq]=hidden`, headers: bearer(expired) })).statusCode,401);
+    await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET status='disabled' WHERE id=$1`,[aliceId]);
+    assert.equal((await app.inject({ url: `${base}/orders?filter[title][neq]=hidden`, headers: bearer(aliceToken) })).statusCode,401);
+    await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET status='active' WHERE id=$1`,[aliceId]);
     for (let attempt = 0; attempt < 2; attempt++) assert.equal((await app.inject({ method: 'POST', url: `${base}/auth/logout`, headers: bearer(aliceToken) })).statusCode, 204);
     assert.equal((await app.inject({ url: `${base}/auth/me`, headers: bearer(aliceToken) })).statusCode, 401);
     assert.equal((await app.inject({ url: `${base}/orders`, headers: bearer(aliceToken) })).statusCode, 401);
+    assert.equal((await app.inject({ url: `${base}/orders?filter[title][neq]=hidden`, headers: bearer(aliceToken) })).statusCode,401);
     assert.equal((await customer.query(`SELECT 1 FROM ${q(schema)}.${q(usersName)} WHERE id=$1`, [aliceId])).rowCount, 1);
   });
   await t.test('session revocation between authentication and mutation is rechecked in the CRUD transaction', async () => {

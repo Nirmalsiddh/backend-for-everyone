@@ -64,7 +64,7 @@ test('managed indexes and requiredness preserve APIs, persist after reload, and 
   await expect(page.getByText('Schema draft saved', { exact: true })).toBeVisible(); await previewApply(); await expect(page.getByText('Schema applied', { exact: true })).toBeVisible();
   await page.reload(); await expect(page.getByRole('combobox', { name: 'Index 1 field 1', exact: true })).toBeDisabled();
   await page.goto(project + '/playground'); await choose(/^GET products_indexes$/);
-  await page.getByLabel('Equality filters (JSON object, up to five)').fill('{"category":7}'); await page.getByRole('checkbox', { name: 'customer_id', exact: true }).check();
+  await page.getByRole('button', { name: 'Add filter', exact: true }).click(); await page.getByLabel('Field 1', { exact: true }).selectOption('category'); await page.getByLabel('Value 1', { exact: true }).fill('7'); await page.getByRole('checkbox', { name: 'customer_id', exact: true }).check();
   const listed = await send(undefined, 200); expect(listed.data).toHaveLength(3); expect(listed.data[0]._related.customer_id.name).toBe('Example');
   await page.goto(tablePath); await page.getByRole('button', { name: 'Add index', exact: true }).click(); await page.getByLabel('Unique index 2', { exact: true }).check();
   await page.getByRole('combobox', { name: 'Index 2 field 1', exact: true }).selectOption({ label: 'sku' }); await page.getByRole('button', { name: 'Save draft', exact: true }).click();

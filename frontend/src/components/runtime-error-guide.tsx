@@ -11,6 +11,7 @@ export function RuntimeErrorGuide() {
           </div>
         ))}
       </dl>
+      <p>INVALID_FILTER: check field, operator and typed values. INVALID_SORT: check the single sort field and direction. QUERY_TOO_COMPLEX: use at most five clauses and 25 IN values per clause.</p>
       <p>If something fails, copy the request ID when contacting support.</p>
     </details>
   );

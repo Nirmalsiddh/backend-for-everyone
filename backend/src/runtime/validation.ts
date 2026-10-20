@@ -1,8 +1,10 @@
 import { uuidPattern } from '../config/env.js';
 import { validateScalar } from '../modules/schema-builder/validation.js';
 import type { Definition, FieldDefinition } from '../modules/schema-builder/types.js';
-import { badRequest } from './errors.js';
-import type { ListOptions } from './types.js';
+import { filterOperators, maxFilterClauses, maxInValues } from '../../../shared/runtime-query.js';
+import type { FilterOperator } from '../../../shared/runtime-query.js';
+import { RuntimeError, badRequest } from './errors.js';
+import type { FilterScalar, ListOptions } from './types.js';
 export function validateId(value: string) {
   if (!new RegExp(uuidPattern).test(value)) throw badRequest();
 }
@@ -24,8 +26,8 @@ export function validateBody(definition: Definition, body: unknown, create: bool
   }
   return record;
 }
-function scalarFilter(field: FieldDefinition, input: string): unknown {
-  let value: unknown = input;
+function scalarFilter(field: FieldDefinition, input: string): FilterScalar {
+  let value: FilterScalar = input;
   if (field.type === 'integer') {
     if (!/^-?\d+$/.test(input)) throw badRequest(); value = Number(input);
   } else if (field.type === 'boolean') {
@@ -35,28 +37,66 @@ function scalarFilter(field: FieldDefinition, input: string): unknown {
   validateValue({ ...field, nullable: false }, value);
   return value;
 }
+const primaryKey: FieldDefinition = {
+  id: 'id', name: 'id', position: -1, type: 'uuid', options: {},
+  nullable: false, unique: true, default: null,
+};
 export function validateList(definition: Definition, query: Record<string, unknown>): ListOptions {
+  // Preserve legacy-only error codes, including malformed old query options.
+  const advanced = Object.keys(query).some((key) => /^filter\[[^\]]*\]\[/.test(key));
+  const invalidFilter = () => advanced
+    ? new RuntimeError(400, 'INVALID_FILTER', 'Invalid runtime filter') : badRequest();
+  const complexity = () => advanced
+    ? new RuntimeError(400, 'QUERY_TOO_COMPLEX', 'Query exceeds filter limits') : badRequest();
+  const invalidSort = () => advanced
+    ? new RuntimeError(400, 'INVALID_SORT', 'Invalid runtime sorting') : badRequest();
   const result: ListOptions = { limit: 25, offset: 0, sort: 'id', direction: 'ASC', filters: [] };
+  const seen = new Set<string>();
   for (const [key, value] of Object.entries(query)) {
-    if (typeof value !== 'string') throw badRequest();
+    if (typeof value !== 'string') {
+      if (key === 'sort' || key === 'direction') throw invalidSort();
+      if (key.startsWith('filter')) throw invalidFilter();
+      throw badRequest();
+    }
     if (key === 'limit' || key === 'offset') {
       if (!/^\d{1,5}$/.test(value)) throw badRequest();
       const number = Number(value);
       if (number < (key === 'limit' ? 1 : 0) || number > (key === 'limit' ? 100 : 10000)) throw badRequest();
       result[key] = number;
     } else if (key === 'sort') {
-      if (value !== 'id' && !definition.fields.some((field) => field.name === value && field.type !== 'jsonb')) throw badRequest();
-      result.sort = value;
+      const sortField = value === 'id' ? primaryKey : definition.fields.find((field) => field.name === value && field.type !== 'jsonb');
+      if (!sortField) throw invalidSort();
+      result.sort = sortField.name;
     } else if (key === 'direction') {
-      if (!['asc', 'desc'].includes(value)) throw badRequest(); result.direction = value === 'asc' ? 'ASC' : 'DESC';
+      if (!['asc', 'desc'].includes(value)) throw invalidSort();
+      result.direction = value === 'asc' ? 'ASC' : 'DESC';
     } else {
-      const match = /^filter\[([a-z][a-z0-9_]*)\]$/.exec(key);
-      if (!match || result.filters.length >= 5) throw badRequest();
+      const match = /^filter\[([a-z][a-z0-9_]*)\](?:\[([a-z_]+)\])?$/.exec(key);
+      if (!match) throw invalidFilter();
       const name = match[1]!;
-      if (name === 'id') { validateId(value); result.filters.push({ field: 'id', value }); continue; }
-      const field = definition.fields.find((item) => item.name === name);
-      if (!field || field.type === 'jsonb') throw badRequest();
-      result.filters.push({ field: name, value: scalarFilter(field, value) });
+      const operator = (match[2] ?? 'eq') as FilterOperator;
+      const field = name === 'id' ? primaryKey : definition.fields.find((item) => item.name === name);
+      if (!field || !filterOperators(field).includes(operator)) throw invalidFilter();
+      const pair = `${name}:${operator}`;
+      if (seen.has(pair)) throw invalidFilter();
+      if (result.filters.length >= maxFilterClauses) throw complexity();
+      seen.add(pair);
+      if (operator === 'is_null') {
+        if (!['true', 'false'].includes(value)) throw invalidFilter();
+        result.filters.push({ kind: 'null', field, operator, isNull: value === 'true' });
+      } else if (operator === 'in') {
+        let items: unknown;
+        try { items = JSON.parse(value); } catch { throw invalidFilter(); }
+        if (!Array.isArray(items) || !items.length || items.some((item) => typeof item !== 'string')) throw invalidFilter();
+        if (items.length > maxInValues) throw complexity();
+        try {
+          result.filters.push({ kind: 'membership', field, operator, values: items.map((item: string) => scalarFilter(field, item)) });
+        } catch { throw invalidFilter(); }
+      } else {
+        try {
+          result.filters.push({ kind: 'comparison', field, operator, value: scalarFilter(field, value) });
+        } catch { throw invalidFilter(); }
+      }
     }
   }
   return result;

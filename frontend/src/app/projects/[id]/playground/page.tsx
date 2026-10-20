@@ -1,4 +1,6 @@
 'use client';
+import { QueryFilters, publicFilters, type FilterRow } from '@/components/query-filters';
+import { serializeRuntimeQuery } from '../../../../../../shared/runtime-query.js';
 import { RuntimeErrorGuide } from '@/components/runtime-error-guide';
 import { recordRuntimeSuccess } from '@/lib/project-visit';
 import { OperationExamples } from '@/components/operation-examples';
@@ -37,7 +39,7 @@ type Form = {
   offset: string;
   sort: string;
   direction: string;
-  filters: string;
+  filters: FilterRow[];
   credentialMode: string;
   credential: string;
 };
@@ -92,7 +94,7 @@ function Playground() {
       offset: '',
       sort: '',
       direction: '',
-      filters: '',
+      filters: [],
       credentialMode: 'none',
       credential: '',
     },
@@ -209,6 +211,7 @@ function Playground() {
         handled.current = handoff;
         f.setValue('target', choice.id);
         f.setValue('includes', []);
+        f.setValue('filters', []);
         f.setValue(
           'body',
           JSON.stringify(
@@ -290,6 +293,7 @@ function Playground() {
     invalidate();
     f.setValue('target', value);
     f.setValue('includes', []);
+    f.setValue('filters', []);
     const preset = value === 'auth:signup' || value === 'auth:login';
     f.setValue(
       'body',
@@ -367,7 +371,7 @@ function Playground() {
                 .map((f) => f.name)
                 .join(', ') || 'None'}
               . Query options: limit, offset (up to 10000), scalar sort and up
-              to five equality filters.
+              to five typed filter clauses (AND only).
             </p>
           )}
           <button type="button" onClick={generateExample}>
@@ -411,28 +415,13 @@ function Playground() {
                     )
                   )
                     return;
-                  const query = new URLSearchParams();
-                  if (selectedIncludes.length) query.set('include', selectedIncludes.join(','));
-                  if (target.list) {
-                    for (const key of [
-                      'limit',
-                      'offset',
-                      'sort',
-                      'direction',
-                    ] as const)
-                      if (v[key]) query.set(key, v[key]);
-                    if (v.filters) {
-                      const filters = JSON.parse(v.filters);
-                      if (
-                        !filters ||
-                        Array.isArray(filters) ||
-                        typeof filters !== 'object'
-                      )
-                        throw new Error('Filters must be a JSON object');
-                      for (const [key, value] of Object.entries(filters))
-                        query.set(`filter[${key}]`, String(value));
-                    }
-                  }
+                  const query = serializeRuntimeQuery({
+                    includes: selectedIncludes,
+                    ...(target.list ? {
+                      limit: v.limit, offset: v.offset, sort: v.sort, direction: v.direction,
+                      filters: publicFilters(v.filters, deployedOperation?.operation['x-runtime-query']),
+                    } : {}),
+                  });
                   const headers: Record<string, string> = {};
                   if (v.credentialMode !== 'none') {
                     if (!v.credential)
@@ -448,7 +437,7 @@ function Playground() {
                   if (body) headers['content-type'] = 'application/json';
                   const start = performance.now();
                   const response = await fetch(
-                    `/api/runtime/${p.data.slug}/${target.resource}${target.record ? '/' + v.recordId : ''}${query.size ? '?' + query : ''}`,
+                    `/api/runtime/${p.data.slug}/${target.resource}${target.record ? '/' + v.recordId : ''}${query ? '?' + query : ''}`,
                     {
                       method: target.method,
                       headers,
@@ -631,13 +620,8 @@ function Playground() {
                       </select>
                     </label>
                   </div>
-                  <label>
-                    Equality filters (JSON object, up to five)
-                    <input
-                      {...f.register('filters')}
-                      placeholder='{"title":"example"}'
-                    />
-                  </label>
+                  <QueryFilters rows={values.filters} capabilities={deployedOperation?.operation['x-runtime-query']} disabled={busy}
+                    onChange={(rows) => { invalidate(); f.setValue('filters', rows, { shouldDirty: true }); }} />
                 </>
               )}
               {target &&

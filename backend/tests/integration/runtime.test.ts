@@ -161,7 +161,7 @@ test('predefined runtime real PostgreSQL core product flow', async (t) => {
     const filtered = await app.inject({ url: `${runtime}?filter[active]=false&filter[sku]=first`, headers: headers() });
     assert.equal(filtered.statusCode, 200, filtered.body); assert.equal(filtered.json().data.length, 1);
     assert.equal((await app.inject({ url: `${runtime}?filter[sku]=${encodeURIComponent("x' OR true --")}`, headers: headers() })).json().data.length, 0);
-    for (const suffix of ['?sort=sku%3BDROP', '?direction=asc%3BSELECT', '?limit=101', '?offset=10001', '?filter[missing]=x', '?filter[payload]=x', '?filter[active]=null', '?filter[sku][eq]=x', '?limit=1&limit=2']) {
+    for (const suffix of ['?sort=sku%3BDROP', '?direction=asc%3BSELECT', '?limit=101', '?offset=10001', '?filter[missing]=x', '?filter[payload]=x', '?filter[active]=null', '?limit=1&limit=2']) {
       const response = await app.inject({ url: runtime + suffix, headers: headers() }); assert.equal(response.statusCode, 400, response.body); safe(response.body);
     }
     assert.equal((await app.inject({ url: `${runtime}/${randomUUID()}`, headers: headers() })).statusCode, 404);
@@ -190,11 +190,15 @@ test('predefined runtime real PostgreSQL core product flow', async (t) => {
     const get = await app.inject({ url: `${runtime}/${rowId}`, headers: headers() }); assert.equal(get.statusCode, 200, get.body); assert.ok(!Object.hasOwn(get.json(), 'notes'));
     assert.equal((await app.inject({ method: 'PATCH', url: `${runtime}/${rowId}`, headers: headers(), payload: { notes: 'draft' } })).statusCode, 400);
     assert.equal((await app.inject({ url: `${runtime}?sort=notes`, headers: headers() })).statusCode, 400);
+    const draftFilter = await app.inject({ url: `${runtime}?filter[notes][eq]=draft`, headers: headers() });
+    assert.equal(draftFilter.statusCode,400); assert.equal(draftFilter.json().code,'INVALID_FILTER');
     const preview = (await app.inject({ method: 'POST', url: `${tablePath}/preview`, headers: auth })).json();
     const applied = await app.inject({ method: 'POST', url: `${tablePath}/apply`, headers: auth, payload: { expectedDraftRevision: 2, planHash: preview.planHash } });
     assert.equal(applied.statusCode, 200, applied.body);
     const patched = await app.inject({ method: 'PATCH', url: `${runtime}/${rowId}`, headers: headers(), payload: { notes: 'applied' } });
     assert.equal(patched.statusCode, 200, patched.body); assert.equal(patched.json().notes, 'applied');
+    const appliedFilter = await app.inject({ url: `${runtime}?filter[notes][in]=${encodeURIComponent(JSON.stringify(['applied']))}`, headers: headers() });
+    assert.equal(appliedFilter.statusCode,200,appliedFilter.body); assert.equal(appliedFilter.json().data[0].id,rowId);
   });
   await t.test('runtime blocks unresolved migrations and real lock timeouts are sanitized', async () => {
     const current = await schemaRepository.get(project.id, ownerId, tableId);

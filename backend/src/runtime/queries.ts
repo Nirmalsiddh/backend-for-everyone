@@ -24,8 +24,13 @@ function parameter(values: unknown[], value: unknown, item?: FieldDefinition) {
 export function selectList(definition: Definition, options: ListOptions, ownership?: Ownership): Query {
   const values: unknown[] = [];
   const filters = options.filters.map((filter) => {
-    const item = filter.field === 'id' ? undefined : field(definition, filter.field);
-    return `${q(filter.field)} = ${parameter(values, filter.value, item)}`;
+    const item = filter.field;
+    const column = q(item.name);
+    if (filter.kind === 'null') return `${column} IS ${filter.isNull ? '' : 'NOT '}NULL`;
+    if (filter.kind === 'membership')
+      return `${column} IN (${filter.values.map((value) => parameter(values, value, item)).join(', ')})`;
+    const operators = { eq: '=', neq: '<>', gt: '>', gte: '>=', lt: '<', lte: '<=' } as const;
+    return `${column} ${operators[filter.operator]} ${parameter(values, filter.value, item)}`;
   });
   if (ownership) filters.push(`${q(field(definition, ownership.field).name)} = ${parameter(values, ownership.userId, field(definition, ownership.field))}`);
   if (options.sort !== 'id' && field(definition, options.sort).type === 'jsonb') throw badRequest();

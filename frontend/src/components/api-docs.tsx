@@ -69,6 +69,12 @@ export function ApiDocs({
                   </strong>
                 </p>
                 <p>{operation.description}</p>
+                {operation['x-runtime-query'] && <details><summary>Applied filter operators</summary>
+                  <table><thead><tr><th>Field</th><th>Type</th><th>Operators</th></tr></thead><tbody>
+                    {operation['x-runtime-query'].fields.map((field) => <tr key={field.name}><td>{field.name}</td><td>{field.type}</td><td>{field.operators.join(', ')}</td></tr>)}
+                  </tbody></table>
+                  <p>IN uses one JSON array of strings, encoded with URLSearchParams. NULL checks use is_null=true or false. Filters only narrow authorized parent rows; includes expand the selected page.</p>
+                </details>}
                 {operation.parameters && (
                   <details>
                     <summary>Parameters</summary>

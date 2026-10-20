@@ -1,3 +1,4 @@
+import { queryCapabilities } from '../../../../shared/runtime-query.js';
 import type { DocsSnapshot, ApiOperation, JsonSchema } from './types.js';
 import {
   fieldSchema,
@@ -85,8 +86,9 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
         { name: 'id', in: 'path', required: true, schema: uuid },
       ];
     if (op === 'list') {
+      operation['x-runtime-query'] = queryCapabilities(fields);
       operation.description +=
-        ' Equality filters use AND semantics, at most five filters. SQL NULL filtering and JSONB filters are unsupported.';
+        ' Filters use AND semantics, maximum five clauses. Legacy filter[field]=value equals filter[field][eq]=value. Operators: eq, neq; numeric/date/timestamp gt/gte/lt/lte; UUID/numeric/text/varchar in using one JSON array of 1–25 strings. Nullable non-JSONB fields support is_null=true|false (IS NULL/IS NOT NULL). Other comparisons exclude NULL. JSONB filtering is unsupported. See x-runtime-query for applied field operators. Use URLSearchParams for encoding, including literal + timezone signs. Single-field sort uses NULLS LAST and an ID tie-break; limit defaults to 25 (maximum 100), offset maximum 10000, with hasMore lookahead. Parent filtering and pagination precede include expansion. No related-field filters, arbitrary OR, or nested logic. Indexes are optional; performance depends on data and the database planner.';
       operation.parameters = [
         {
           name: 'limit',

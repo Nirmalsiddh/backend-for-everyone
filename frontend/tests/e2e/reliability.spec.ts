@@ -1,5 +1,5 @@
 import { documentFixture } from '../api-docs-fixture';
-import { signupLogin } from './platform-account';
+import { signupLogin, login } from './platform-account';
 import { test, expect, type Page } from '@playwright/test';
 const id = '11111111-1111-4111-8111-111111111111';
 const tableId = '22222222-2222-4222-8222-222222222222';
@@ -32,7 +32,8 @@ let fixtureCookies:
 async function fixture(page: Page, workflow?: any) {
   if (fixtureCookies) await page.context().addCookies(fixtureCookies);
   else {
-    await signupLogin(page);
+    if (process.env.E2E_PLATFORM_ACCOUNT_EMAIL) await login(page, process.env.E2E_PLATFORM_ACCOUNT_EMAIL);
+    else await signupLogin(page);
     fixtureCookies = await page.context().cookies();
   }
   let endpoints: any[] = [];
