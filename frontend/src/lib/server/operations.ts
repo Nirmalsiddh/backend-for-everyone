@@ -78,13 +78,20 @@ export const operations: Operation[] = [
   rule('database-connection/credentials', ['PUT'], connection),
   rule('database-connection/test', ['POST'], connection),
   rule('schema', ['GET'], (d) => (d as unknown[]).map(tableDto)),
+  rule('schema/reference-targets', ['GET'], (d) => {
+    const value = pick(d, ['targets', 'unavailable']);
+    return {
+      ...value,
+      targets: (value.targets as unknown[]).map((t) => pick(t, ['id', 'name'])),
+    };
+  }),
   rule('schema/tables', ['POST'], tableDto),
   rule(`schema/tables/${uuid}`, ['GET', 'DELETE'], tableDto),
   rule(`schema/tables/${uuid}/draft`, ['PUT'], tableDto),
   rule(
     `schema/tables/${uuid}/preview`,
     ['POST'],
-    keys(['planHash', 'draftRevision', 'operation', 'sql']),
+    keys(['planHash', 'draftRevision', 'operation', 'sql', 'relationships']),
   ),
   rule(`schema/tables/${uuid}/apply`, ['POST'], (d) => ({
     ...pick(d, ['migrationId', 'status']),

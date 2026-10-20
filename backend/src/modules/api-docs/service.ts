@@ -1,3 +1,4 @@
+import type { Step } from '../workflows/types.js';
 import { ProjectError } from '../projects/service.js';
 import type { DocsRepository, DocsSnapshot, OpenApiDocument } from './types.js';
 import { crud } from './crud.js';
@@ -28,7 +29,10 @@ export function generate(
     for (const p of Object.values(r.policies))
       if (
         p.mode === 'owner' &&
-        !r.fields?.some((f) => f.id === p.ownerFieldId && f.type === 'uuid')
+        !r.fields?.some(
+          (f) =>
+            f.id === p.ownerFieldId && f.type === 'uuid' && !f.relationship,
+        )
       )
         throw unavailable();
   for (const w of snapshot.workflows)
@@ -78,10 +82,30 @@ export function generate(
       },
     },
   };
+  function relationshipWrites(steps: Step[]): boolean {
+    return steps.some((step) => {
+      if (step.type === 'condition')
+        return relationshipWrites(step.then) || relationshipWrites(step.else);
+      if (
+        !['insert', 'update', 'delete'].includes(step.type) ||
+        !('tableId' in step)
+      )
+        return false;
+      if (step.type === 'delete')
+        return snapshot.tables.some((t) =>
+          t.fields?.some((f) => f.relationship?.tableId === step.tableId),
+        );
+      return !!snapshot.tables
+        .find((t) => t.id === step.tableId)
+        ?.fields?.some((f) => f.relationship);
+    });
+  }
   const operations = [
     ...snapshot.resources.filter((r) => r.operations.length).flatMap(crud),
     ...(snapshot.auth?.enabled ? authOperations(snapshot.auth) : []),
-    ...snapshot.workflows.map((w) => workflow(w.path, w.definition!)),
+    ...snapshot.workflows.map((w) =>
+      workflow(w.path, w.definition!, relationshipWrites(w.definition!.steps)),
+    ),
   ].sort(
     (a, b) => a.path.localeCompare(b.path) || a.method.localeCompare(b.method),
   );

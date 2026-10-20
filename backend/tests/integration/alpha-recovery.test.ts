@@ -57,7 +57,7 @@ import type { TableRecord } from '../../src/modules/schema-builder/types.js';
 import type { AuthContext } from '../../src/modules/project-auth/types.js';
 import { env } from '../helpers.js';
 
-test('baseline upgrade, same-target credentials, interrupted setup and restore containment', async (t) => {
+test('v0.6 baseline upgrade, same-target credentials, interrupted setup and restore containment', async (t) => {
   const url = process.env.TEST_UPGRADE_DATABASE_URL;
   if (!url) {
     t.skip('Explicit empty disposable TEST_UPGRADE_DATABASE_URL required');
@@ -72,7 +72,7 @@ test('baseline upgrade, same-target credentials, interrupted setup and restore c
   const journal = JSON.parse(
     await readFile(join(folder, 'meta/_journal.json'), 'utf8'),
   );
-  journal.entries = journal.entries.filter((e: { idx: number }) => e.idx <= 6);
+  journal.entries = journal.entries.filter((e: { idx: number }) => e.idx <= 7);
   await mkdir(join(temporary, 'meta'));
   await writeFile(
     join(temporary, 'meta/_journal.json'),
@@ -302,6 +302,14 @@ test('baseline upgrade, same-target credentials, interrupted setup and restore c
   );
   // Existing resources are now upgraded, never recreated.
   await migrate(db, { migrationsFolder: folder });
+  assert.equal(
+    (
+      await pool.query(
+        'SELECT count(*)::int AS n FROM schema_fields WHERE relationship IS NOT NULL',
+      )
+    ).rows[0].n,
+    0,
+  );
   const readiness = createReadiness(url);
   await readiness.check();
   await readiness.close();
@@ -959,11 +967,12 @@ test('real customer sockets share admission, absolute deadlines release capacity
     await observer.end();
   }
   assert.equal(customerAdmission.snapshot().total, 0);
-  const deadline = boundedClient({ connectionString: url }, 'diagnostic', 250);
+  // Include connection establishment in a bounded deadline without assuming an idle CI host.
+  const deadline = boundedClient({ connectionString: url }, 'diagnostic', 1000);
   deadline.on('error', () => {});
   try {
     await deadline.connect();
-    await assert.rejects(deadline.query('SELECT pg_sleep(1)'), {
+    await assert.rejects(deadline.query('SELECT pg_sleep(2)'), {
       code: 'CUSTOMER_OPERATION_TIMEOUT',
     });
   } finally {

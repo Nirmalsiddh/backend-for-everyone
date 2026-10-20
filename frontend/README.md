@@ -134,3 +134,5 @@ Workflow preview describes effective capabilities: touched tables, reads/writes,
 - Auth attempt counters are bounded in-process maps.
 
 Record latency, query counts and memory with representative projects before adding pools, caches, workers or another state framework. No architectural optimization is included here.
+
+Reference fields target already-applied managed tables, store UUIDs, and prevent deletion while referenced. The target selector performs a read-only catalog check; loading and check failures are distinct from no eligible targets. Applied references are immutable. Ownership UUIDs are separate from relationships. Docs/Playground show applied relationship guidance and use raw UUID inputs without querying customer rows for pickers or examples.

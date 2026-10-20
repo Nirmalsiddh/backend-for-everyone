@@ -106,8 +106,21 @@ export class PostgresSchemaRepository implements SchemaRepository {
     return {
       ...table,
       applyStatus: applyStatus ?? null,
-      fields: fields.map(({ tableId: _tableId, ...field }) => field),
+      fields: fields.map(({ tableId: _tableId, relationship, ...field }) => ({
+        ...field,
+        ...(relationship ? { relationship } : {}),
+      })),
     };
+  }
+  private async managed(reader: Reader, projectId: string, ownerId: string) {
+    const rows = await reader
+      .select({ id: schemaTables.id })
+      .from(schemaTables)
+      .where(this.owned(projectId, ownerId));
+    const tables: TableRecord[] = [];
+    for (const row of rows)
+      tables.push(await this.read(reader, projectId, ownerId, row.id));
+    return tables;
   }
   async list(projectId: string, ownerId: string) {
     await this.project(this.db, projectId, ownerId);
@@ -155,6 +168,10 @@ export class PostgresSchemaRepository implements SchemaRepository {
           })
           .returning();
         if (!table) throw new Error('Insert returned no table');
+        generatePlan(
+          { ...table, fields: draft.fields },
+          await this.managed(tx, projectId, ownerId),
+        );
         if (draft.fields.length)
           await tx
             .insert(schemaFields)
@@ -186,7 +203,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
           draftRevision: table.draftRevision + 1,
           updatedAt: new Date(),
         };
-        if (table.appliedDefinition) generatePlan(candidate);
+        generatePlan(candidate, await this.managed(tx, projectId, ownerId));
         await tx
           .update(schemaTables)
           .set({
@@ -226,7 +243,10 @@ export class PostgresSchemaRepository implements SchemaRepository {
         await this.lock(tx, projectId, ownerId);
         await this.idle(tx, projectId);
         const table = await this.read(tx, projectId, ownerId, tableId);
-        if (generatePlan(table).hash !== plan.hash)
+        if (
+          generatePlan(table, await this.managed(tx, projectId, ownerId))
+            .hash !== plan.hash
+        )
           throw conflict('Draft or applied revision changed');
         const id = randomUUID();
         await tx.insert(schemaMigrations).values({
@@ -236,6 +256,14 @@ export class PostgresSchemaRepository implements SchemaRepository {
           draftRevision: plan.revision,
           planHash: plan.hash,
           definition: plan.definition,
+          ...(plan.version === 2
+            ? {
+                planContext: {
+                  version: 2 as const,
+                  dependencies: plan.dependencies!,
+                },
+              }
+            : {}),
           status: 'applying',
         });
         return id;

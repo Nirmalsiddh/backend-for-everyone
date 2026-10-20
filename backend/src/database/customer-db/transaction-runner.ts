@@ -128,6 +128,12 @@ export function createTransactionRunner(
         error && typeof error === 'object' && 'code' in error
           ? String(error.code)
           : '';
+      if (code === '23503' || code === '23001')
+        throw new RuntimeError(
+          409,
+          'RELATIONSHIP_CONFLICT',
+          'A referenced record is unavailable, or this change conflicts with related records.',
+        );
       if (code === '23505')
         throw new RuntimeError(
           409,

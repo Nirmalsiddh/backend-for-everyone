@@ -77,7 +77,7 @@ export function PolicyEditor({
             >
               <option value="">Choose applied UUID field</option>
               {fields
-                .filter((f) => f.type === 'uuid')
+                .filter((f) => f.type === 'uuid' && !f.relationship)
                 .map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.name}

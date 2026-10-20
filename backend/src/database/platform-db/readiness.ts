@@ -27,6 +27,8 @@ export function createReadiness(databaseUrl: string) {
         throw new Error('Not ready');
       await pool.query('SELECT runtime_state FROM projects LIMIT 0');
       await pool.query('SELECT revision FROM database_connections LIMIT 0');
+      await pool.query('SELECT relationship FROM schema_fields LIMIT 0');
+      await pool.query('SELECT plan_context FROM schema_migrations LIMIT 0');
       // Verify the minimum auth schema exists as well as the migration marker.
       await pool.query(
         'SELECT u.id, u.password_hash, u.status, u.updated_at, s.token_hash, s.expires_at FROM users u LEFT JOIN platform_sessions s ON false LIMIT 0',

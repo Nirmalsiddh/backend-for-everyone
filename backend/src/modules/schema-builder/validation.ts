@@ -166,6 +166,7 @@ export function normalizeDraft(
         'nullable',
         'unique',
         'default',
+        'relationship',
       ]);
       validateIdentifier(item.name);
       if (names.has(item.name)) throw invalid('Duplicate field name');
@@ -229,8 +230,32 @@ export function normalizeDraft(
           Array.isArray(item.default))
       )
         throw invalid('Defaults must be structured objects');
+      if (item.relationship !== undefined) {
+        const relationship = item.relationship;
+        if (
+          !relationship ||
+          typeof relationship !== 'object' ||
+          Array.isArray(relationship)
+        )
+          throw invalid('Invalid relationship');
+        exactKeys(relationship, ['tableId', 'onDelete']);
+        if (
+          item.type !== 'uuid' ||
+          item.unique ||
+          item.default ||
+          relationship.onDelete !== 'restrict' ||
+          typeof relationship.tableId !== 'string' ||
+          !new RegExp(uuidPattern).test(relationship.tableId)
+        )
+          throw invalid(
+            'References require UUID, no uniqueness or default, and restricted deletion',
+          );
+      }
       const field = {
         id,
+        ...(item.relationship
+          ? { relationship: { ...item.relationship } }
+          : {}),
         name: item.name,
         position,
         type: item.type,

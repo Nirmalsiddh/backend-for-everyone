@@ -1,3 +1,4 @@
+import { inspectReferenceTargets } from '../../database/customer-db/reference-targets.js';
 import { DestinationError } from '../../security/customer-destination.js';
 import { schemaTableDto } from './dto.js';
 import type { ConnectionRepository } from '../database-connections/types.js';
@@ -17,6 +18,27 @@ export class SchemaService {
   ) {}
   async list(projectId: string, ownerId: string) {
     return (await this.repository.list(projectId, ownerId)).map(schemaTableDto);
+  }
+  async targets(projectId: string, ownerId: string) {
+    const tables = await this.repository.list(projectId, ownerId);
+    if (
+      tables.some((t) =>
+        ['applying', 'outcome_unknown'].includes(t.applyStatus?.status ?? ''),
+      )
+    )
+      throw conflict(
+        'Resolve schema operations before checking reference targets',
+      );
+    const connection = await this.connections.findOwned(projectId, ownerId);
+    if (!connection) throw conflict('A saved database connection is required');
+    const config = this.encryption.decrypt<ConnectionConfig>(
+      connection,
+      `${connection.projectId}:${connection.id}`,
+    );
+    return inspectReferenceTargets(
+      config,
+      tables.filter((t) => t.connectionId === connection.id),
+    );
   }
   async get(projectId: string, ownerId: string, tableId: string) {
     return schemaTableDto(
@@ -65,11 +87,34 @@ export class SchemaService {
   async preview(projectId: string, ownerId: string, tableId: string) {
     const plan = generatePlan(
       await this.repository.get(projectId, ownerId, tableId),
+      await this.repository.list(projectId, ownerId),
     );
+    if (plan.dependencies?.length) {
+      const connection = await this.connections.findOwned(projectId, ownerId);
+      if (!connection) throw conflict('Database connection is unavailable');
+      const config = this.encryption.decrypt<ConnectionConfig>(
+        connection,
+        `${connection.projectId}:${connection.id}`,
+      );
+      await inspectReferenceTargets(
+        config,
+        plan.managedTables ?? [],
+        plan.dependencies.map((d) => d.tableId),
+      );
+    }
     return {
       planHash: plan.hash,
       draftRevision: plan.revision,
       operation: plan.operation,
+      relationships: plan.definition.fields
+        .filter((f) => f.relationship)
+        .map((f) => ({
+          field: f.name,
+          target: plan.dependencies!.find(
+            (d) => d.tableId === f.relationship!.tableId,
+          )!.definition.name,
+          nullable: f.nullable,
+        })),
       sql: plan.statements.join('\n'),
     };
   }
@@ -81,7 +126,10 @@ export class SchemaService {
     hash: string,
   ) {
     const table = await this.repository.get(projectId, ownerId, tableId);
-    const plan = generatePlan(table);
+    const plan = generatePlan(
+      table,
+      await this.repository.list(projectId, ownerId),
+    );
     if (revision !== plan.revision || hash !== plan.hash)
       throw conflict('Draft revision or preview plan changed');
     const connection = await this.connections.findOwned(projectId, ownerId);

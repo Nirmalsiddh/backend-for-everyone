@@ -1,8 +1,11 @@
+import { relationshipDependencies } from './relationships.js';
 import { createHash } from 'node:crypto';
 import { conflict, invalid } from './errors.js';
 import { validateIdentifier, validateTargetSchema } from './validation.js';
 import type {
   Definition,
+  ManagedTable,
+  RelationshipDependency,
   FieldDefinition,
   Plan,
   TableRecord,
@@ -58,7 +61,12 @@ function fieldSql(field: FieldDefinition) {
     : '';
   return `${quoteIdentifier(field.name)} ${sqlType(field)}${field.nullable ? '' : ' NOT NULL'}${field.default ? ` DEFAULT ${literal(field)}` : ''}${unique}`;
 }
-export function generatePlan(table: TableRecord): Plan {
+export function generatePlan(
+  table: TableRecord,
+  tables: ManagedTable[] = [],
+  bound?: RelationshipDependency[],
+): Plan {
+  const dependencies = bound ?? relationshipDependencies(table, tables);
   validateIdentifier(table.name);
   validateTargetSchema(table.schemaName);
   const definition: Definition = {
@@ -107,7 +115,29 @@ export function generatePlan(table: TableRecord): Plan {
       (field) => `ALTER TABLE ${target} ADD COLUMN ${fieldSql(field)};`,
     );
   }
+  const oldIds = new Set(
+    table.appliedDefinition?.definition.fields.map((f) => f.id) ?? [],
+  );
+  for (const field of definition.fields.filter(
+    (f) => f.relationship && !oldIds.has(f.id),
+  )) {
+    const dependency = dependencies.find(
+      (d) => d.tableId === field.relationship!.tableId,
+    );
+    if (!dependency) throw invalid('Reference target is unavailable');
+    const name = field.id.replaceAll('-', '');
+    statements.push(
+      `ALTER TABLE ${target} ADD CONSTRAINT ${quoteIdentifier(`fk_${name}`)} FOREIGN KEY (${quoteIdentifier(field.name)}) REFERENCES ${quoteIdentifier(dependency.definition.schema)}.${quoteIdentifier(dependency.definition.name)} ("id") ON DELETE RESTRICT ON UPDATE NO ACTION NOT DEFERRABLE;`,
+    );
+    statements.push(
+      `CREATE INDEX ${quoteIdentifier(`ix_fk_${name}`)} ON ${target} USING btree (${quoteIdentifier(field.name)});`,
+    );
+  }
+  const relationshipPlan = dependencies.length
+    ? { version: 2 as const, dependencies }
+    : {};
   const content = {
+    ...relationshipPlan,
     tableId: table.id,
     connectionId: table.connectionId,
     revision: table.draftRevision,
@@ -117,6 +147,8 @@ export function generatePlan(table: TableRecord): Plan {
     operation,
   };
   return {
+    ...relationshipPlan,
+    ...(tables.length ? { managedTables: tables } : {}),
     hash: createHash('sha256').update(canonical(content)).digest('hex'),
     revision: table.draftRevision,
     definition,

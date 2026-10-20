@@ -45,6 +45,19 @@ export function createSchemaExecutor(
       }),
     );
     client.on('error', () => {});
+    const beforeTables = plan.managedTables ?? [];
+    const afterTables = beforeTables.filter(
+      (t) => t.appliedDefinition?.definition.name !== plan.definition.name,
+    );
+    // Candidate metadata is used only for verification inside this transaction.
+    afterTables.push({
+      id:
+        beforeTables.find(
+          (t) => t.appliedDefinition?.definition.name === plan.definition.name,
+        )?.id ?? '__candidate__',
+      appliedRevision: plan.revision,
+      appliedDefinition: { definition: plan.definition, catalog: null },
+    });
     let committing = false;
     let transaction = false;
     try {
@@ -61,6 +74,44 @@ export function createSchemaExecutor(
         [`schema-builder:${plan.definition.schema}`],
       );
       const target = `${quoteIdentifier(plan.definition.schema)}.${quoteIdentifier(plan.definition.name)}`;
+      const lockTargets = [
+        ...new Set([
+          ...(applied ? [target] : []),
+          ...(plan.dependencies ?? []).map(
+            (d) =>
+              `${quoteIdentifier(d.definition.schema)}.${quoteIdentifier(d.definition.name)}`,
+          ),
+        ]),
+      ].sort();
+      for (const name of lockTargets)
+        await client.query(`LOCK TABLE ONLY ${name} IN ACCESS EXCLUSIVE MODE`);
+      for (const dependency of plan.dependencies ?? []) {
+        if (
+          canonical(
+            await catalog(
+              client,
+              dependency.definition.schema,
+              dependency.definition.name,
+              beforeTables,
+            ),
+          ) !== canonical(dependency.catalog)
+        )
+          throw conflict('Reference target changed; refresh and preview again');
+        const [privilege] = (
+          await client.query(
+            "SELECT has_column_privilege(current_user, $1, 'id', 'REFERENCES') AS allowed",
+            [
+              `${quoteIdentifier(dependency.definition.schema)}.${quoteIdentifier(dependency.definition.name)}`,
+            ],
+          )
+        ).rows;
+        if (!privilege?.allowed)
+          throw new SchemaError(
+            422,
+            'RELATIONSHIP_CAPABILITY_MISSING',
+            'Credential cannot create relationships to this table.',
+          );
+      }
       if (applied) {
         await client.query(
           `LOCK TABLE ONLY ${target} IN ACCESS EXCLUSIVE MODE`,
@@ -69,6 +120,7 @@ export function createSchemaExecutor(
           client,
           plan.definition.schema,
           plan.definition.name,
+          beforeTables,
         );
         if (canonical(actual) !== canonical(applied.catalog))
           throw conflict(
@@ -80,7 +132,21 @@ export function createSchemaExecutor(
         client,
         plan.definition.schema,
         plan.definition.name,
+        afterTables,
       );
+      for (const dependency of plan.dependencies ?? []) {
+        if (
+          canonical(
+            await catalog(
+              client,
+              dependency.definition.schema,
+              dependency.definition.name,
+              afterTables,
+            ),
+          ) !== canonical(dependency.catalog)
+        )
+          throw conflict('Reference target changed during Apply');
+      }
       if (receipts && plan.receipt)
         await writeReceipt(
           client,

@@ -12,6 +12,7 @@ import {
   quoteIdentifier,
 } from '../../modules/schema-builder/plan.js';
 export type CredentialRequirements = {
+  managedTables?: import('../../modules/schema-builder/types.js').ManagedTable[];
   schemas: { name: string; catalog: unknown }[];
   auth: { users: string; sessions: string; catalog: unknown } | null;
 };
@@ -99,10 +100,31 @@ export async function inspectCredentials(
           'This credential cannot manage existing application tables',
         );
     }
+    for (const table of requirements.managedTables ?? []) {
+      if (!table.appliedDefinition) continue;
+      const d = table.appliedDefinition.definition;
+      const [permission] = (
+        await client.query(
+          "SELECT has_column_privilege(current_user, $1, 'id', 'REFERENCES') AS allowed",
+          [`${quoteIdentifier(d.schema)}.${quoteIdentifier(d.name)}`],
+        )
+      ).rows;
+      if (!permission?.allowed)
+        throw denied(
+          'RELATIONSHIP_CAPABILITY_MISSING',
+          'Credential cannot create relationships to this table.',
+        );
+    }
     for (const table of requirements.schemas)
       if (
-        canonical(await catalog(client, config.schema, table.name)) !==
-        canonical(table.catalog)
+        canonical(
+          await catalog(
+            client,
+            config.schema,
+            table.name,
+            requirements.managedTables,
+          ),
+        ) !== canonical(table.catalog)
       )
         throw denied(
           'CATALOG_MISMATCH',

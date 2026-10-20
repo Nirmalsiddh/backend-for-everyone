@@ -80,7 +80,11 @@ export function infer(
     return { type: 'string', enum: ['user', 'admin'] };
   return dynamic();
 }
-export function workflow(path: string, definition: WorkflowDefinition) {
+export function workflow(
+  path: string,
+  definition: WorkflowDefinition,
+  relationships = false,
+) {
   const input = Object.fromEntries(
     Object.entries(definition.input)
       .sort(([a], [b]) => a.localeCompare(b))
@@ -152,7 +156,7 @@ export function workflow(path: string, definition: WorkflowDefinition) {
     operationId: `workflow_${path.replaceAll('-', '_')}`,
     tags: ['Workflows'],
     summary: `Run ${path}`,
-    description: `Published workflow. ${definition.auth === 'key_only' ? `API key requires ${writes ? 'read_write' : 'read or read_write'} scope.` : 'Signed-in application user required.'} Database access rules are enforced by the published workflow; endpoint authentication alone does not imply owner-only access.`,
+    description: `Published workflow. ${definition.auth === 'key_only' ? `API key requires ${writes ? 'read_write' : 'read or read_write'} scope.` : 'Signed-in application user required.'} Database access rules are enforced by the published workflow; endpoint authentication alone does not imply owner-only access.${relationships ? ' RELATIONSHIP_CONFLICT (409): a referenced record is unavailable, or this change conflicts with related records.' : ''}`,
     'x-access-policy': definition.auth,
     security: [
       {

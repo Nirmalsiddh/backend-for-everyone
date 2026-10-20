@@ -57,6 +57,13 @@
       "when": 1792476313437,
       "tag": "0007_alpha_recovery",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792484285200,
+      "tag": "0008_schema_relationships",
+      "breakpoints": true
     }
   ]
 }

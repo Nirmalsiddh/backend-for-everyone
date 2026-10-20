@@ -207,6 +207,10 @@ export const schemaFields = pgTable(
     name: varchar('name', { length: 63 }).notNull(),
     position: integer('position').notNull(),
     type: varchar('type', { length: 16 }).$type<FieldType>().notNull(),
+    relationship:
+      jsonb('relationship').$type<
+        import('../../modules/schema-builder/types.js').Relationship
+      >(),
     options: jsonb('type_options')
       .$type<{ length?: number; precision?: number; scale?: number }>()
       .notNull(),
@@ -230,6 +234,10 @@ export const schemaFields = pgTable(
       sql`${table.type} IN ('text', 'varchar', 'integer', 'bigint', 'decimal', 'boolean', 'uuid', 'date', 'timestamp', 'jsonb')`,
     ),
     check(
+      'schema_fields_relationship_valid',
+      sql`${table.relationship} IS NULL OR (${table.type} = 'uuid' AND NOT ${table.unique} AND ${table.default} IS NULL AND jsonb_typeof(${table.relationship}) = 'object' AND ${table.relationship} ? 'tableId' AND ${table.relationship} ? 'onDelete' AND jsonb_typeof(${table.relationship}->'tableId') = 'string' AND ${table.relationship}->>'tableId' ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$' AND jsonb_typeof(${table.relationship}->'onDelete') = 'string' AND ${table.relationship}->>'onDelete' = 'restrict' AND ${table.relationship} - 'tableId' - 'onDelete' = '{}'::jsonb)`,
+    ),
+    check(
       'schema_fields_default_valid',
       sql`${table.default} IS NULL OR (jsonb_typeof(${table.default}) = 'object' AND ${table.default}->>'kind' IN ('literal', 'current_timestamp'))`,
     ),
@@ -248,6 +256,10 @@ export const schemaMigrations = pgTable(
       .references(() => schemaTables.id, { onDelete: 'cascade' }),
     draftRevision: integer('draft_revision').notNull(),
     planHash: varchar('plan_hash', { length: 64 }).notNull(),
+    planContext: jsonb('plan_context').$type<{
+      version: 2;
+      dependencies: import('../../modules/schema-builder/types.js').RelationshipDependency[];
+    }>(),
     definition: jsonb('definition').$type<Definition>().notNull(),
     status: varchar('status', { length: 24 })
       .$type<MigrationStatus>()

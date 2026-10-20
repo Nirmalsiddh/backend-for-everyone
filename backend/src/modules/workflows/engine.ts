@@ -1,7 +1,7 @@
+import { checkManagedCatalogs } from '../../database/customer-db/managed-catalog.js';
 import { CredentialEncryption } from '../../security/encryption.js';
 import type { ConnectionConfig } from '../database-connections/types.js';
 import { verifySessionGuard } from '../../database/customer-db/auth-store.js';
-import { catalog } from '../../database/customer-db/catalog.js';
 import {
   TransactionAbort,
   type CustomerTransactionRunner,
@@ -20,7 +20,6 @@ import {
   validateId,
   validateValue,
 } from '../../runtime/validation.js';
-import { canonical, quoteIdentifier as q } from '../schema-builder/plan.js';
 import {
   boundedJson,
   executionError,
@@ -176,24 +175,17 @@ export class WorkflowEngine {
           userId: principal.userId,
           role: principal.role,
         });
-      for (const dependency of [...target.version.schemaDependencies].sort(
-        (a, b) => a.tableId.localeCompare(b.tableId),
-      )) {
-        const applied = target.tables.find(
-          (table) => table.id === dependency.tableId,
-        )?.appliedDefinition;
-        if (!applied || applied.definition.schema !== config.schema)
-          throw unavailable();
-        await client.query(
-          `LOCK TABLE ONLY ${q(config.schema)}.${q(applied.definition.name)} IN ACCESS SHARE MODE`,
-        );
-        if (
-          canonical(
-            await catalog(client, config.schema, applied.definition.name),
-          ) !== canonical(applied.catalog)
-        )
-          throw unavailable();
-      }
+      const appliedTables = target.version.schemaDependencies.map(
+        (dependency) => {
+          const applied = target.tables.find(
+            (t) => t.id === dependency.tableId,
+          )?.appliedDefinition;
+          if (!applied || applied.definition.schema !== config.schema)
+            throw unavailable();
+          return applied;
+        },
+      );
+      await checkManagedCatalogs(client, appliedTables, target.tables);
       let dbOperations = 0;
       const walk = async (
         steps: Step[],

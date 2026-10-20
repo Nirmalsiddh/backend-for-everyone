@@ -69,6 +69,11 @@ export class PostgresConnectionRepository implements ConnectionRepository {
       );
     return {
       requirements: {
+        managedTables: tables.map((t) => ({
+          id: t.id,
+          appliedRevision: t.appliedRevision,
+          appliedDefinition: t.appliedDefinition,
+        })),
         schemas: tables
           .filter((t) => t.appliedDefinition)
           .map((t) => ({

@@ -16,7 +16,7 @@ A PostgreSQL-backed API builder, with a management API foundation, encrypted cus
 - Versioned custom POST workflows with branching, owner-aware database blocks, guarded stock decrements, and atomic execution.
 - Request validation, sanitized error responses/logs, and unit and PostgreSQL integration tests.
 
-General relationship-builder foreign keys and destructive schema edits are future milestones. Customer DDL is generated exclusively from validated typed definitions; arbitrary customer SQL or code execution is not supported.
+Managed many-to-one UUID references are supported with restricted deletion and a managed index. Destructive schema edits remain unsupported. Customer DDL is generated exclusively from validated typed definitions; arbitrary customer SQL or code execution is not supported.
 
 ## Repository structure
 
@@ -154,16 +154,17 @@ The dependency audit currently reports four moderate development-only findings i
 
 Run `npm run db:migrate` before starting the updated server. Migration `0002_schema_builder.sql` adds `schema_tables`, `schema_fields`, and `schema_migrations`. These are platform metadata; customer rows remain in the connected database. No additional environment variables or dependencies are required. PostgreSQL 16+ is supported.
 
-All seven routes require management authentication and project ownership. Foreign-owned resources return `404`:
+All schema routes require management authentication and project ownership. Foreign-owned resources return `404`:
 
 | Method | Route                                                          | Behavior                                                             |
 | ------ | -------------------------------------------------------------- | -------------------------------------------------------------------- |
 | GET    | `/internal/projects/:projectId/schema`                         | List managed table drafts and applied metadata                       |
+| GET | `/internal/projects/:projectId/schema/reference-targets` | Check eligible applied reference targets read-only |
 | POST   | `/internal/projects/:projectId/schema/tables`                  | Create a draft; `201`                                                |
 | GET    | `/internal/projects/:projectId/schema/tables/:tableId`         | Retrieve a definition                                                |
 | PUT    | `/internal/projects/:projectId/schema/tables/:tableId/draft`   | Replace the draft at an expected revision                            |
 | DELETE | `/internal/projects/:projectId/schema/tables/:tableId`         | Delete a never-applied definition; `204`                             |
-| POST   | `/internal/projects/:projectId/schema/tables/:tableId/preview` | Compile SQL without connecting to or modifying the customer database |
+| POST   | `/internal/projects/:projectId/schema/tables/:tableId/preview` | Compile changes; references also check target catalogs read-only |
 | POST   | `/internal/projects/:projectId/schema/tables/:tableId/apply`   | Verify the plan and execute it transactionally                       |
 
 Example creation body:
@@ -214,7 +215,7 @@ Table/column names must start with a lowercase ASCII letter and consist of lower
 
 ### Allowed changes and connection lifecycle
 
-Before first apply, drafts can be renamed, fields can be added/removed, and types/constraints/defaults can be edited. Once applied, only new nullable columns without defaults or unique constraints may be added. Existing applied fields, their identities, and their ordering are immutable. Foreign keys, renames, column drops, type changes, constraint changes, physical table deletion, imports, custom SQL, custom indexes, triggers, and functions are unsupported.
+Before first apply, drafts can be renamed, fields can be added/removed, and types/constraints/defaults can be edited. Once applied, only new nullable columns without defaults or unique constraints may be added. Existing applied fields, their identities, and their ordering are immutable. Foreign-key removal/retargeting, renames, column drops, type changes, constraint changes, physical table deletion, imports, custom SQL, custom indexes, triggers, and functions are unsupported.
 
 Deleting a never-applied definition removes platform metadata only. It never drops an existing customer object with the same name. Connection replacement/deletion returns `409 CONNECTION_IN_USE` while any schema definition depends on it. Unapplied drafts may be removed first; rebinding applied schemas to another connection is deferred. Retesting a saved connection remains supported.
 
@@ -222,7 +223,7 @@ Deleting a never-applied definition removes platform metadata only. It never dro
 
 Apply reserves a durable migration record, then uses one short-lived customer client and one PostgreSQL transaction. A project can have only one unresolved apply. Customer operations acquire an advisory lock per target schema; additive changes also lock the managed table before checking its catalog snapshot. DDL uses a two-second lock timeout and five-second statement timeout. PostgreSQL statement errors roll back the transaction and produce a sanitized failed migration. Applied metadata advances only after customer commit succeeds.
 
-Apply compares managed table columns, defaults, constraints, indexes, triggers, and relevant table flags with the last applied catalog snapshot. External changes block further alterations with `409`; existing customer tables are never silently imported or adopted. Preview is compilation only, so apply can still fail due to drift, permissions, conflicts, or connectivity.
+Apply compares managed table columns, defaults, constraints, indexes, triggers, and relevant table flags with the last applied catalog snapshot. External changes block further alterations with `409`; existing customer tables are never silently imported or adopted. Ordinary schema preview is compilation only; relationship preview also checks target catalogs read-only. Apply can still fail due to drift, permissions, conflicts, or connectivity.
 
 The platform and customer databases do not share a transaction. A lost commit response produces `outcome_unknown`; a process crash or failed platform finalization can leave `applying`. Both statuses block new drafts, draft edits, deletion, and further applies for the project. They must not be automatically retried or treated as rollback.
 
@@ -526,3 +527,11 @@ workflow needs republishing after a schema change. Generation does not inspect c
 See [the operator recovery runbook](deploy/RECOVERY.md) for same-target credential updates, dry-run setup reconciliation, project suspension, contained restore, encryption-key maintenance, limits and maintenance-gated upgrades. These controls do not delete customer tables or automatically retry writes.
 
 The [hardening validation record and release checklist](deploy/ALPHA-VALIDATION.md) describe disposable upgrade, restore, interruption and deployment-gate evidence and the remaining alpha limits.
+
+## Managed relationships
+
+Apply platform migration `0008_schema_relationships.sql` through the normal maintenance deployment procedure. Existing projects and customer tables need no changes. In Tables & fields choose **Reference**, then an already-applied managed table in the same project/connection. The stored field is UUID; its target is always the generated `id`. Required references are supported at initial creation; later additions must be nullable, without defaults or uniqueness. Apply creates the field, a real `ON DELETE RESTRICT ON UPDATE NO ACTION NOT DEFERRABLE` constraint, and a deterministic B-tree index in one transaction.
+
+References return raw UUIDs and accept existing UUID equality filters. Use a real related record ID in Playground; synthetic examples do not identify customer records. Missing references and restricted parent deletion return sanitized `409 RELATIONSHIP_CONFLICT`. A reference verifies existence, not authorization or shared ownership. Ownership UUIDs remain separate, and Reference fields cannot be ownership fields.
+
+Self-reference, cycles, unique references, external/auth-table targets, cascading actions, relationship edits/removal, joins/expansion, nested writes and backfills are unsupported. A target may have a newer saved draft: only its current database schema is referenced. Applying changes to a directly used workflow table requires republishing that workflow. An incoming reference alone does not change the parent's revision.

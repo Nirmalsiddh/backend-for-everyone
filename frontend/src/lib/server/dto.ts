@@ -16,6 +16,7 @@ const fieldKeys = [
   'unique',
   'options',
   'default',
+  'relationship',
 ];
 export function pick(value: unknown, keys: string[]) {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -28,9 +29,15 @@ export function pick(value: unknown, keys: string[]) {
 export function projectDto(value: unknown) {
   return pick(value, projectKeys);
 }
+function fieldDto(value: unknown) {
+  const row = pick(value, fieldKeys);
+  if (row.relationship)
+    row.relationship = pick(row.relationship, ['tableId', 'onDelete']);
+  return row;
+}
 export function tableDto(value: unknown): unknown {
   const row = pick(value, tableKeys);
-  row.fields = (row.fields as unknown[]).map((f) => pick(f, fieldKeys));
+  row.fields = (row.fields as unknown[]).map((f) => fieldDto(f));
   if (row.appliedDefinition) {
     const d = (
       row.appliedDefinition as {
@@ -40,7 +47,7 @@ export function tableDto(value: unknown): unknown {
     row.appliedDefinition = {
       definition: {
         name: d.name,
-        fields: d.fields.map((f) => pick(f, fieldKeys)),
+        fields: d.fields.map((f) => fieldDto(f)),
       },
     };
   }

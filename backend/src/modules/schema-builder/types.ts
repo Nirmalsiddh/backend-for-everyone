@@ -5,7 +5,23 @@ export type FieldType = (typeof fieldTypes)[number];
 export type FieldDefault =
   | { kind: 'literal'; value: unknown }
   | { kind: 'current_timestamp' };
+export interface Relationship {
+  tableId: string;
+  onDelete: 'restrict';
+}
+export interface ManagedTable {
+  id: string;
+  appliedRevision: number | null;
+  appliedDefinition: AppliedDefinition | null;
+}
+export interface RelationshipDependency {
+  tableId: string;
+  appliedRevision: number;
+  definition: Definition;
+  catalog: unknown;
+}
 export interface FieldInput {
+  relationship?: Relationship;
   id?: string;
   name: string;
   type: FieldType;
@@ -15,6 +31,9 @@ export interface FieldInput {
   default?: FieldDefault;
 }
 export interface FieldDefinition {
+  /** Public Docs projection only; not persisted as a field property. */
+  referenceName?: string;
+  relationship?: Relationship;
   id: string;
   name: string;
   position: number;
@@ -32,6 +51,8 @@ export interface Definition {
 export interface AppliedDefinition {
   definition: Definition;
   catalog: unknown;
+  // Request-local context; never persisted inside applied metadata.
+  managedTables?: ManagedTable[];
 }
 export interface TableRecord {
   id: string;
@@ -57,6 +78,9 @@ export interface DraftInput {
   fields: FieldInput[];
 }
 export interface Plan {
+  version?: 2;
+  dependencies?: RelationshipDependency[];
+  managedTables?: ManagedTable[];
   receipt?: { projectId: string; operationId: string };
   hash: string;
   revision: number;

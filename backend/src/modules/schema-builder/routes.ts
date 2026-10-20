@@ -35,6 +35,15 @@ const field = {
         scale: { type: 'integer' },
       },
     },
+    relationship: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['tableId', 'onDelete'],
+      properties: {
+        tableId: { type: 'string', pattern: uuidPattern },
+        onDelete: { const: 'restrict' },
+      },
+    },
     nullable: { type: 'boolean' },
     unique: { type: 'boolean' },
     default: {
@@ -87,7 +96,17 @@ export async function schemaRoutes(
   app.get<{ Params: Params }>(
     base,
     { schema: { params: params(false) } },
-    (req) => options.service.list(req.params.projectId, req.platformPrincipal.userId),
+    (req) =>
+      options.service.list(req.params.projectId, req.platformPrincipal.userId),
+  );
+  app.get<{ Params: Params }>(
+    `${base}/reference-targets`,
+    { schema: { params: params(false) } },
+    (req) =>
+      options.service.targets(
+        req.params.projectId,
+        req.platformPrincipal.userId,
+      ),
   );
   app.post<{ Params: Params; Body: DraftInput }>(
     `${base}/tables`,
@@ -121,7 +140,11 @@ export async function schemaRoutes(
     tablePath,
     { schema: { params: params(true) } },
     (req) =>
-      options.service.get(req.params.projectId, req.platformPrincipal.userId, req.params.tableId),
+      options.service.get(
+        req.params.projectId,
+        req.platformPrincipal.userId,
+        req.params.tableId,
+      ),
   );
   app.put<{
     Params: Params;
@@ -166,7 +189,11 @@ export async function schemaRoutes(
     `${tablePath}/preview`,
     { schema: { params: params(true) }, preValidation: noBody },
     (req) =>
-      options.service.preview(req.params.projectId, req.platformPrincipal.userId, req.params.tableId),
+      options.service.preview(
+        req.params.projectId,
+        req.platformPrincipal.userId,
+        req.params.tableId,
+      ),
   );
   app.post<{
     Params: Params;

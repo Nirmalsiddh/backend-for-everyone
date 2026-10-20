@@ -634,6 +634,21 @@ function Playground() {
                     <textarea {...f.register('body')} rows={8} />
                   </label>
                 )}
+              {Object.entries(
+                deployedOperation?.operation.requestBody?.content[
+                  'application/json'
+                ]?.schema.properties ?? {},
+              )
+                .filter(
+                  ([, field]) =>
+                    typeof field.description === 'string' &&
+                    field.description.startsWith('References '),
+                )
+                .map(([name, field]) => (
+                  <p key={name}>
+                    <code>{name}</code>: {field.description}
+                  </p>
+                ))}
               <label>
                 Credential mode
                 <select

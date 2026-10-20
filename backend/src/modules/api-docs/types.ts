@@ -12,6 +12,7 @@ export interface DocsSnapshot {
   blocked: boolean;
   resources: {
     name: string;
+    relationshipDelete?: boolean;
     fields: FieldDefinition[] | null;
     operations: Operation[];
     policies: Partial<Record<Operation, OperationPolicy>>;
@@ -27,7 +28,12 @@ export interface DocsSnapshot {
     definition: WorkflowDefinition | null;
     dependencies: Dependency[];
   }[];
-  tables: { id: string; appliedRevision: number | null; applied: boolean }[];
+  tables: {
+    id: string;
+    appliedRevision: number | null;
+    applied: boolean;
+    fields?: FieldDefinition[] | null;
+  }[];
 }
 export interface DocsRepository {
   snapshot(

@@ -4,7 +4,7 @@ import { fieldTypes } from '../../../../shared/public-contracts.js';
 import { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { api } from '@/lib/api';
-import type { Table, FieldType } from '@/lib/contracts';
+import type { Table } from '@/lib/contracts';
 import {
   emptyField,
   tasksPreset,
@@ -15,7 +15,7 @@ import {
   type FieldForm,
 } from '@/lib/schema-form';
 import { useAction, ActionState, DirtyGuard } from '@/components/ui';
-const types = fieldTypes;
+const types = [...fieldTypes, 'reference'] as const;
 export function SchemaEditor({
   path,
   table,
@@ -25,6 +25,30 @@ export function SchemaEditor({
   table?: Table;
   onCreated?: (t: Table) => void;
 }) {
+  const [targets, setTargets] = useState<{
+    targets: { id: string; name: string }[];
+    unavailable: boolean;
+  } | null>(null);
+  const [targetError, setTargetError] = useState(false);
+  const [targetRefresh, refreshTargets] = useState(0);
+  useEffect(() => {
+    let active = true;
+    setTargets(null);
+    setTargetError(false);
+    const base = path.split('/schema')[0] + '/schema';
+    api<{ targets: { id: string; name: string }[]; unavailable: boolean }>(
+      base + '/reference-targets',
+    )
+      .then((result) => {
+        if (active) setTargets(result);
+      })
+      .catch(() => {
+        if (active) setTargetError(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [path, targetRefresh]);
   const [choosePreset, setChoosePreset] = useState(false);
   const [savedRevision, setSavedRevision] = useState(table?.draftRevision);
   const action = useAction({
@@ -35,6 +59,7 @@ export function SchemaEditor({
     sql: string;
     planHash: string;
     draftRevision: number;
+    relationships?: { field: string; target: string; nullable: boolean }[];
   } | null>(null);
   const f = useForm<{ name: string; fields: FieldForm[] }>({
     defaultValues: {
@@ -183,7 +208,17 @@ export function SchemaEditor({
                   Type
                   <select
                     {...f.register(`fields.${i}.type`, {
-                      onChange: () => {
+                      onChange: (event) => {
+                        if (
+                          event.target.value === 'reference' &&
+                          (value.unique || value.defaultKind !== 'none') &&
+                          !confirm(
+                            'Reference fields cannot have uniqueness or defaults. Clear these settings?',
+                          )
+                        ) {
+                          f.setValue(`fields.${i}.type`, value.type);
+                          return;
+                        }
                         f.setValue(`fields.${i}.unique`, false, {
                           shouldDirty: true,
                         });
@@ -194,10 +229,71 @@ export function SchemaEditor({
                     })}
                   >
                     {types.map((t) => (
-                      <option key={t}>{t}</option>
+                      <option key={t} value={t}>
+                        {t === 'reference' ? 'Reference' : t}
+                      </option>
                     ))}
                   </select>
                 </label>
+                {value.type === 'reference' && (
+                  <div>
+                    <label>
+                      Target table
+                      <select
+                        {...f.register(`fields.${i}.targetTableId`)}
+                        required
+                        disabled={!targets || targetError}
+                      >
+                        <option value="">Choose an applied table</option>
+                        {targets?.targets
+                          .filter((t) => t.id !== table?.id)
+                          .map((t) => (
+                            <option key={t.id} value={t.id}>
+                              {t.name}
+                            </option>
+                          ))}
+                      </select>
+                    </label>
+                    {!targets && !targetError && (
+                      <p role="status">Checking reference targets…</p>
+                    )}
+                    {targetError && (
+                      <p role="alert">
+                        Could not check reference targets. Check your database
+                        connection.
+                      </p>
+                    )}
+                    {targets &&
+                      !targets.targets.some((t) => t.id !== table?.id) && (
+                        <p>
+                          No eligible applied tables. Apply a target table
+                          first.
+                        </p>
+                      )}
+                    {targets?.unavailable && (
+                      <p role="status">
+                        Some tables need attention and cannot be selected.
+                      </p>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => refreshTargets((n) => n + 1)}
+                    >
+                      Refresh reference targets
+                    </button>
+                    <p>Delete behavior: Prevent deletion while referenced</p>
+                    <p>
+                      A relationship verifies that the referenced record exists.
+                      It does not grant access to that record.
+                    </p>
+                    {table?.appliedRevision != null && (
+                      <p>
+                        Existing records will have no reference until you set
+                        one.
+                      </p>
+                    )}
+                  </div>
+                )}
                 {value.type === 'varchar' && (
                   <label>
                     Length
@@ -253,7 +349,9 @@ export function SchemaEditor({
                   type="checkbox"
                   {...f.register(`fields.${i}.unique`)}
                   disabled={
-                    table?.appliedRevision != null || value.type === 'jsonb'
+                    table?.appliedRevision != null ||
+                    value.type === 'jsonb' ||
+                    value.type === 'reference'
                   }
                 />
                 Unique
@@ -262,7 +360,9 @@ export function SchemaEditor({
                 Default
                 <select
                   {...f.register(`fields.${i}.defaultKind`)}
-                  disabled={table?.appliedRevision != null}
+                  disabled={
+                    table?.appliedRevision != null || value.type === 'reference'
+                  }
                 >
                   <option value="none">None</option>
                   <option value="literal">Typed literal</option>
@@ -396,7 +496,21 @@ export function SchemaEditor({
                   )
                   .map((field) => (
                     <li key={field.id}>
-                      {field.name}: {field.type}
+                      {field.name}:{' '}
+                      {field.relationship ? 'Reference' : field.type}
+                      {field.relationship && (
+                        <p>
+                          Reference to{' '}
+                          {
+                            preview.relationships?.find(
+                              (r) => r.field === field.name,
+                            )?.target
+                          }
+                          .id · {field.nullable ? 'Optional' : 'Required'} ·
+                          Prevent deletion while referenced · Create
+                          relationship index
+                        </p>
+                      )}
                       {field.nullable ? '' : ', required'}
                       {field.unique ? ', unique' : ''}
                       {field.default

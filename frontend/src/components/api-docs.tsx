@@ -86,6 +86,20 @@ export function ApiDocs({
                         }
                       />
                     </details>
+                    {Object.entries(
+                      operation.requestBody.content['application/json']?.schema
+                        .properties ?? {},
+                    )
+                      .filter(
+                        ([, field]) =>
+                          typeof field.description === 'string' &&
+                          field.description.startsWith('References '),
+                      )
+                      .map(([name, field]) => (
+                        <p key={name}>
+                          <code>{name}</code> · UUID · {field.description}
+                        </p>
+                      ))}
                     <h4>Request example</h4>
                     <Json
                       value={

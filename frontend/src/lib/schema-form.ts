@@ -3,7 +3,8 @@ import type { Field, FieldType } from './contracts';
 export type FieldForm = {
   id?: string;
   name: string;
-  type: FieldType;
+  type: FieldType | 'reference';
+  targetTableId: string;
   nullable: boolean;
   unique: boolean;
   length: string;
@@ -15,6 +16,7 @@ export type FieldForm = {
 export const emptyField = (): FieldForm => ({
   name: '',
   type: 'text',
+  targetTableId: '',
   nullable: true,
   unique: false,
   length: '200',
@@ -24,9 +26,12 @@ export const emptyField = (): FieldForm => ({
   defaultText: '',
 });
 export function toForm(field: Field): FieldForm {
+  const { relationship: _relationship, ...ordinary } = field;
   return {
     ...emptyField(),
-    ...field,
+    ...ordinary,
+    type: field.relationship ? 'reference' : field.type,
+    targetTableId: field.relationship?.tableId ?? '',
     nullable: field.nullable ?? true,
     unique: field.unique ?? false,
     length: String(field.options?.length ?? 200),
@@ -49,10 +54,20 @@ export function toField(f: FieldForm): Field {
   const field: Field = {
     ...(f.id ? { id: f.id } : {}),
     name: f.name,
-    type: f.type,
+    type: f.type === 'reference' ? 'uuid' : f.type,
+    ...(f.type === 'reference'
+      ? {
+          relationship: {
+            tableId: z.uuid().parse(f.targetTableId),
+            onDelete: 'restrict' as const,
+          },
+        }
+      : {}),
     nullable: f.nullable,
     unique: f.unique,
   };
+  if (f.type === 'reference' && (f.unique || f.defaultKind !== 'none'))
+    throw new Error('References cannot have uniqueness or defaults');
   if (f.type === 'varchar')
     field.options = {
       length: z.number().int().min(1).max(10000).parse(Number(f.length)),

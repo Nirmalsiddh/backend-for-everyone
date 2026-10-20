@@ -107,3 +107,11 @@ Use three disposable customer DBs for key-only backend, browser auth/ownership a
 Desktop Chromium is the declared alpha authoring browser. Check keyboard focus, dialogs, status/copy announcements, and 375px core forms. Firefox smoke is best-effort, not advertised full support. Ask support for project ID, request ID, timestamp, operation and error code only. Never request credentials, DB URLs, request bodies, returned customer data or SQL.
 
 Observe request counts/latency, safe capacity categories and process memory before tuning. Schema list is 1 project + 1 table-list + 3 reads/table; workflow list currently repeats owned/workflow/table readiness reads. Overview uses seven metadata queries. OpenAPI is an owned repeatable-read metadata snapshot with no customer DB connection. Do not add caches or pooling without measurements.
+
+## Relationship Apply recovery
+
+Relationship plans use version 2 context in `schema_migrations.plan_context`: bound target applied revisions, identities and catalogs. Relationship child catalogs carry version 2 structured FK state. The recovery encryption envelope remains version 1; its authenticated content includes that versioned catalog. Historical relationship-free plans, catalogs and receipts retain their original hash/comparison rules; NULL relationship metadata is omitted when reconstructing old fields.
+
+Use the existing dry-run `reconcile schema --project ... --operation ...` command. POST_STATE requires the authenticated receipt, exact field/FK/index/enforcement state, and unchanged valid target dependencies. Missing/disabled enforcement, a UUID column without its constraint/index, wrong targets, or an absent receipt cannot finalize success. PRE_STATE requires exact pre-state. DIVERGED remains blocked: investigate; never replay DDL or rebaseline/adopt objects. Adding a managed incoming FK does not rewrite the parent's definition/catalog receipt: only structurally verified managed enforcement triggers are excluded from its local comparison. Unexpected relationships/triggers remain drift.
+
+Keep the existing migration maintenance gate, backup/key custody, restore containment, suspension, credential preflight and operator reconciliation procedures. No external deployment is part of relationship validation.

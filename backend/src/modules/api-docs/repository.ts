@@ -25,6 +25,7 @@ export class PostgresDocsRepository implements DocsRepository {
         // Deliberate projections: never select credentials, drafts, catalogs or auth table names.
         const resources = await tx
           .select({
+            tableId: schemaTables.id,
             name: endpoints.resourceName,
             operations: endpoints.enabledOperations,
             policies: endpoints.policies,
@@ -77,6 +78,10 @@ export class PostgresDocsRepository implements DocsRepository {
           .select({
             id: schemaTables.id,
             appliedRevision: schemaTables.appliedRevision,
+            name: schemaTables.name,
+            fields: sql<
+              FieldDefinition[] | null
+            >`${schemaTables.appliedDefinition}->'definition'->'fields'`,
           })
           .from(schemaTables)
           .where(eq(schemaTables.projectId, projectId))
@@ -100,9 +105,25 @@ export class PostgresDocsRepository implements DocsRepository {
             tables.length > 500,
           resources: resources.map((r) => ({
             name: r.name,
+            relationshipDelete: tables.some((t) =>
+              t.fields?.some((f) => f.relationship?.tableId === r.tableId),
+            ),
             operations: r.operations,
             policies: r.policies,
-            fields: r.fields ?? null,
+            fields:
+              r.fields?.map((f) => ({
+                ...f,
+                ...(f.relationship
+                  ? {
+                      referenceName:
+                        tables.find(
+                          (t) =>
+                            t.id === f.relationship!.tableId &&
+                            t.appliedRevision !== null,
+                        )?.name ?? 'related record',
+                    }
+                  : {}),
+              })) ?? null,
           })),
           ...(auth ? { auth } : {}),
           workflows: workflows.map((w) => ({

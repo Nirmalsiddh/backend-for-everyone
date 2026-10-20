@@ -89,6 +89,8 @@ export function fieldSchema(field: FieldDefinition): JsonSchema {
       };
       break;
   }
+  if (field.referenceName)
+    schema.description = `References ${field.referenceName}.id. Related records are not expanded automatically. The example UUID is structurally valid but must be replaced with the ID of an existing related record. A relationship verifies that the referenced record exists. It does not grant access to that record.`;
   if (field.nullable && schema.type)
     schema.type = [schema.type as string, 'null'];
   if (field.default)

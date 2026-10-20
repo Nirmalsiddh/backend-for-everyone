@@ -1,3 +1,4 @@
+import type { ManagedTable } from '../modules/schema-builder/types.js';
 import { SchemaError } from '../modules/schema-builder/errors.js';
 import { and, eq, inArray } from 'drizzle-orm';
 import type { PlatformDatabase } from '../database/platform-db/client.js';
@@ -81,7 +82,7 @@ export async function reconcile(
           [config.schema, name],
         )
       ).rows.length > 0;
-    const inspect = async (name: string) => {
+    const inspect = async (name: string, tables: ManagedTable[] = []) => {
       const relation = await client.query(
         'SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2',
         [config.schema, name],
@@ -92,7 +93,7 @@ export async function reconcile(
         `LOCK TABLE ONLY ${quoteIdentifier(config.schema)}.${quoteIdentifier(name)} IN ACCESS SHARE MODE`,
       );
       try {
-        return await catalog(client, config.schema, name);
+        return await catalog(client, config.schema, name, tables);
       } catch (error) {
         if (error instanceof SchemaError && error.code === 'SCHEMA_CONFLICT')
           return { unsupportedRelation: true };
@@ -113,6 +114,8 @@ export async function reconcile(
           ),
         );
       if (!operation) throw new Error('Active schema operation not found');
+      if (operation.planContext && operation.planContext.version !== 2)
+        throw new Error('Unsupported schema operation format');
       const [table] = await db
         .select()
         .from(schemaTables)
@@ -134,16 +137,46 @@ export async function reconcile(
         .from(schemaFields)
         .where(eq(schemaFields.tableId, table.id))
         .orderBy(schemaFields.position);
-      const plan = generatePlan({
-        ...table,
-        fields: fields.map(({ tableId: _tableId, ...field }) => field),
-      });
+      const managed = await db
+        .select({
+          id: schemaTables.id,
+          appliedRevision: schemaTables.appliedRevision,
+          appliedDefinition: schemaTables.appliedDefinition,
+        })
+        .from(schemaTables)
+        .where(
+          and(
+            eq(schemaTables.projectId, projectId),
+            eq(schemaTables.connectionId, connection.id),
+          ),
+        );
+      const plan = generatePlan(
+        {
+          ...table,
+          fields: fields.map(
+            ({ tableId: _tableId, relationship, ...field }) => ({
+              ...field,
+              ...(relationship ? { relationship } : {}),
+            }),
+          ),
+        },
+        managed,
+        operation.planContext?.dependencies,
+      );
       if (
         plan.hash !== operation.planHash ||
         canonical(plan.definition) !== canonical(operation.definition)
       )
         throw new Error('Operation plan does not match durable metadata');
-      actual = (await exists(table.name)) ? await inspect(table.name) : null;
+      const postTables = managed.filter((t) => t.id !== table.id);
+      postTables.push({
+        id: table.id,
+        appliedRevision: operation.draftRevision,
+        appliedDefinition: { definition: operation.definition, catalog: null },
+      });
+      actual = (await exists(table.name))
+        ? await inspect(table.name, postTables)
+        : null;
       const receipt =
         actual === null
           ? undefined
@@ -154,11 +187,36 @@ export async function reconcile(
               table.name,
               `schema:${projectId}:${operationId}:${operation.planHash}`,
             );
-      classification = classifyCatalog(
-        table.appliedDefinition?.catalog ?? null,
-        actual,
-        receipt,
-      );
+      classification = classifyCatalog(undefined, actual, receipt);
+      let dependenciesValid = true;
+      for (const dependency of plan.dependencies ?? []) {
+        const target = managed.find((t) => t.id === dependency.tableId);
+        if (
+          target?.appliedRevision !== dependency.appliedRevision ||
+          canonical(target?.appliedDefinition?.catalog) !==
+            canonical(dependency.catalog) ||
+          canonical(target?.appliedDefinition?.definition) !==
+            canonical(dependency.definition) ||
+          canonical(
+            await inspect(
+              dependency.definition.name,
+              classification === 'POST_STATE' ? postTables : managed,
+            ),
+          ) !== canonical(dependency.catalog)
+        )
+          dependenciesValid = false;
+      }
+      if (classification !== 'POST_STATE') {
+        const preActual = (await exists(table.name))
+          ? await inspect(table.name, managed)
+          : null;
+        classification =
+          canonical(preActual) ===
+          canonical(table.appliedDefinition?.catalog ?? null)
+            ? 'PRE_STATE'
+            : 'DIVERGED';
+      }
+      if (!dependenciesValid) classification = 'DIVERGED';
       if (apply && classification !== 'DIVERGED')
         await db.transaction(async (tx) => {
           await tx

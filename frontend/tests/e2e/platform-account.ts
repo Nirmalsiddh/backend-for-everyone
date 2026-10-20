@@ -6,9 +6,13 @@ export async function signupLogin(page: Page) {
   await page.goto('/signup');
   await page.getByLabel('Email', { exact: true }).fill(email);
   await page.getByLabel('Password', { exact: true }).fill(platformPassword);
-  await page.getByRole('button', { name: 'Create account', exact: true }).click();
+  await page
+    .getByRole('button', { name: 'Create account', exact: true })
+    .click();
   await expect(page.getByRole('status')).toContainText('Continue to sign in');
   await login(page, email);
+  // Reuse a normally authenticated fixture account rather than exceeding hosted signup limits.
+  process.env.E2E_PLATFORM_ACCOUNT_EMAIL = email;
   return email;
 }
 export async function login(page: Page, email: string) {

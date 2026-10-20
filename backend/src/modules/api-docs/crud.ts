@@ -60,6 +60,13 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
         ...(['create', 'update'].includes(op) ? [413] : []),
       ]),
     };
+    if (
+      write &&
+      ((op === 'delete' && resource.relationshipDelete) ||
+        (op !== 'delete' && fields.some((f) => f.relationship)))
+    )
+      operation.description +=
+        ' RELATIONSHIP_CONFLICT (409): a referenced record is unavailable, or this change conflicts with related records.';
     if (['get', 'update', 'delete'].includes(op))
       operation.parameters = [
         { name: 'id', in: 'path', required: true, schema: uuid },
