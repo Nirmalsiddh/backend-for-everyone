@@ -13,7 +13,7 @@ import type { FieldDefinition } from '../schema-builder/types.js';
 import type { DocsRepository } from './types.js';
 export class PostgresDocsRepository implements DocsRepository {
   constructor(private readonly db: PlatformDatabase) {}
-  snapshot(projectId: string, ownerId: string) {
+  snapshot(projectId: string, ownerId: string, scope = { workflows: true }) {
     return this.db.transaction(
       async (tx) => {
         const [project] = await tx
@@ -54,7 +54,7 @@ export class PostgresDocsRepository implements DocsRepository {
           .from(projectAuthConfigs)
           .where(eq(projectAuthConfigs.projectId, projectId))
           .limit(1);
-        const workflows = await tx
+        const workflows = scope.workflows ? await tx
           .select({
             path: workflowEndpoints.path,
             definition: workflowVersions.definition,
@@ -74,7 +74,7 @@ export class PostgresDocsRepository implements DocsRepository {
               eq(workflowEndpoints.enabled, true),
             ),
           )
-          .limit(501);
+          .limit(501) : [];
         const tables = await tx
           .select({
             id: schemaTables.id,

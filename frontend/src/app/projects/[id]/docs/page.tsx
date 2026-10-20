@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { TypeScriptClient } from '@/components/typescript-client';
 import { useParams } from 'next/navigation';
 import { useData, ErrorBox } from '@/components/ui';
 import { ApiDocs } from '@/components/api-docs';
@@ -11,6 +12,7 @@ export default function DocsPage() {
   if (query.error)
     return (
       <>
+        <TypeScriptClient key={id} projectId={id} />
         <ErrorBox error={query.error} />
         <p>
           Docs are unavailable while deployed metadata is blocked. Review{' '}
@@ -27,6 +29,6 @@ export default function DocsPage() {
       </>
     );
   if (query.isPending || !query.data)
-    return <p role="status">Loading documentation…</p>;
-  return <ApiDocs document={query.data} projectId={id} />;
+    return <><TypeScriptClient key={id} projectId={id} /><p role="status">Loading documentation…</p></>;
+  return <><TypeScriptClient key={id} projectId={id} /><ApiDocs document={query.data} projectId={id} /></>;
 }

@@ -1,3 +1,6 @@
+import { PostgresDocsRepository } from '../../src/modules/api-docs/repository.js';
+import { TypeScriptClientService } from '../../src/modules/typescript-client/service.js';
+import { compileSdk } from '../sdk-compile-helper.js';
 import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
 import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
@@ -182,6 +185,36 @@ test('predefined runtime real PostgreSQL core product flow', async (t) => {
     assert.equal((await configure(allOperations, 2)).statusCode, 200);
     assert.equal((await app.inject({ url: runtime, headers: headers() })).statusCode, 200);
     assert.equal((await app.inject({ method: 'PUT', url: `${runtime}/${rowId}`, headers: headers(), payload: {} })).statusCode, 404);
+  });
+  await t.test('generated standalone client compiled and exercised over real HTTP and PostgreSQL', async () => {
+    const jsonTable = await app.inject({method:'POST',url:management+'/schema/tables',headers:auth,payload:{name:'json_defaults',fields:[{name:'payload',type:'jsonb',nullable:false,default:{kind:'literal',value:null}}]}});
+    assert.equal(jsonTable.statusCode,201,jsonTable.body);
+    const jsonPath=management+'/schema/tables/'+jsonTable.json().id;
+    const jsonPreview=(await app.inject({method:'POST',url:jsonPath+'/preview',headers:auth})).json();
+    assert.equal((await app.inject({method:'POST',url:jsonPath+'/apply',headers:auth,payload:{expectedDraftRevision:1,planHash:jsonPreview.planHash}})).statusCode,200);
+    assert.equal((await app.inject({method:'PUT',url:jsonPath+'/api',headers:auth,payload:{enabledOperations:['get','create'],expectedAppliedRevision:1,expectedConfigRevision:0}})).statusCode,200);
+    const generated = await new TypeScriptClientService(new PostgresDocsRepository(db)).get(project.id,ownerId);
+    const compiled = await compileSdk(generated.source);
+    try {
+      const origin = await app.listen({port:0,host:'127.0.0.1'});
+      const client = compiled.module.createClient({baseUrl:origin+'/api/'+project.slug,apiKey:writeKey});
+      const jsonDefault=await client.resources.json_defaults.create({});
+      assert.equal(jsonDefault.payload,null);
+      assert.equal((await client.resources.json_defaults.get(jsonDefault.id)).payload,null);
+      await assert.rejects(client.resources.json_defaults.create({payload:null}),(error:Error & {status?:number})=>error instanceof compiled.module.ApiError && error.status===400);
+      const resource = client.resources.products;
+      const created = await resource.create({sku:'generated-sdk',counter:'9007199254740993',price:'123456789012345678.91',active:true});
+      assert.equal(created.counter,'9007199254740993');
+      assert.equal((await resource.get(created.id)).sku,'generated-sdk');
+      for (const filter of [{sku:{eq:'generated-sdk'}},{sku:{neq:'first'}},{price:{gte:'123456789012345678.90',lte:'123456789012345678.92'}},{counter:{in:['9007199254740993']}},{title:{is_null:true}}]) {
+        const result=await resource.list({filter,sort:'id',limit:1,offset:0});
+        assert.ok(result.data.length);assert.equal(result.pagination.limit,1);
+      }
+      assert.equal((await resource.update(created.id,{title:'Updated by client'})).title,'Updated by client');
+      assert.equal(await resource.delete(created.id),undefined);
+      await assert.rejects(resource.get(created.id),(error:Error & {status?:number;requestId?:string})=>error instanceof compiled.module.ApiError && error.status===404 && !!error.requestId);
+      for (const secret of [writeKey,readKey,config.password,env.connectionEncryptionKey,'generated-sdk']) assert.ok(!generated.source.includes(secret));
+    } finally {await compiled.cleanup();}
   });
   await t.test('unapplied fields stay inaccessible; applied nullable additions become available', async () => {
     const current = await schemaRepository.get(project.id, ownerId, tableId);

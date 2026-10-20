@@ -33,3 +33,9 @@ export function serializeRuntimeQuery(options = {}) {
   if (options.includes?.length) query.set('include', [...options.includes].sort().join(','));
   return query.toString();
 }
+
+// Render the developer-authored canonical implementation, never customer code.
+export function runtimeQuerySerializerSource() {
+  return serializeRuntimeQuery.toString().replace('options = {}', 'options: WireQuery = {}')
+    .replace("['limit', 'offset', 'sort', 'direction']", "['limit', 'offset', 'sort', 'direction'] as const");
+}

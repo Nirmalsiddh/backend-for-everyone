@@ -103,6 +103,7 @@ export const operations: Operation[] = [
   rule('openapi', ['GET'], (d) =>
     pick(d, ['openapi', 'info', 'servers', 'paths', 'components']),
   ),
+  rule('sdk/typescript', ['GET'], (d) => pick(d, ['filename', 'generatorVersion', 'contractHash', 'tableRevisions', 'source'])),
   rule('api-keys', ['GET', 'POST'], (d, m) =>
     keys([
       'id',

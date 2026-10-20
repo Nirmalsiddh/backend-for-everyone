@@ -1,3 +1,5 @@
+import { TypeScriptClientService } from '../../src/modules/typescript-client/service.js';
+import { compileSdk } from '../sdk-compile-helper.js';
 import { PostgresDocsRepository } from '../../src/modules/api-docs/repository.js';
 import { Validator } from '@seriousme/openapi-schema-validator';
 import { memoryPlatformAuthRepository } from '../platform-auth-helpers.js';
@@ -172,6 +174,28 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     assert.equal((await app.inject({ method: 'DELETE', url: rowUrl, headers })).statusCode, 204);
     assert.ok(!doc.paths['/orders'].post.requestBody.content['application/json'].schema.properties.owner_id);
     assert.ok(!doc.paths['/orders/{id}'].patch.requestBody.content['application/json'].schema.properties.owner_id);
+  });
+  await t.test('compiled SDK auth helpers maintain session/key separation and owner narrowing', async () => {
+    const generated=await new TypeScriptClientService(new PostgresDocsRepository(db)).get(project.id,ownerId);
+    const compiled=await compileSdk(generated.source);
+    try {
+      const origin=await app.listen({port:0,host:'127.0.0.1'});
+      let token: string | undefined;
+      const client=compiled.module.createClient({baseUrl:origin+base,apiKey:key,getSessionToken:()=>token});
+      const email='sdk-user@example.test';
+      const user=await client.auth.signup({email,password});
+      const login=await client.auth.login({email,password});token=login.token;
+      assert.equal((await client.auth.me()).id,user.id);
+      const created=await client.resources.orders.create({title:'SDK owned'});
+      assert.equal(created.owner_id,user.id);
+      assert.deepEqual((await client.resources.orders.list({filter:{owner_id:{neq:user.id}}})).data,[]);
+      await client.resources.orders.delete(created.id);
+      await client.auth.logout();
+      await assert.rejects(client.auth.me(),(error:Error & {status?:number})=>error instanceof compiled.module.ApiError && error.status===401);
+      const wrong=compiled.module.createClient({baseUrl:origin+base,apiKey:token,getSessionToken:()=>key});
+      await assert.rejects(wrong.resources.orders.list(),TypeError);
+      for(const secret of [token,password,key,config.password])if(secret)assert.ok(!generated.source.includes(secret));
+    } finally {await compiled.cleanup();}
   });
   await t.test('Alice and Bob can create owned orders but cannot read, transfer, patch, or delete each other’s rows', async () => {
     const create = async (token: string, title: string) => app.inject({ method: 'POST', url: `${base}/orders`, headers: bearer(token), payload: { title } });

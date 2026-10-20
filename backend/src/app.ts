@@ -1,3 +1,5 @@
+import { typeScriptClientRoutes } from './modules/typescript-client/routes.js';
+import { TypeScriptClientService } from './modules/typescript-client/service.js';
 import { customerAdmission } from './database/customer-db/admission.js';
 import { randomUUID } from 'node:crypto';
 import { docsRoutes } from './modules/api-docs/routes.js';
@@ -377,6 +379,8 @@ export function buildApp(options: {
             options.env.publicRuntimeOrigin,
           ),
         });
+      if (options.docsRepository)
+        await internal.register(typeScriptClientRoutes, { service: new TypeScriptClientService(options.docsRepository) });
       if (options.workflowRepository)
         await internal.register(workflowRoutes, {
           service: new WorkflowService(options.workflowRepository),

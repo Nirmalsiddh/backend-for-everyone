@@ -101,7 +101,7 @@ export function generate(
     });
   }
   const operations = [
-    ...snapshot.resources.filter((r) => r.operations.length).flatMap(crud),
+    ...snapshot.resources.filter((r) => r.operations.length).flatMap((resource) => crud(resource)),
     ...(snapshot.auth?.enabled ? authOperations(snapshot.auth) : []),
     ...snapshot.workflows.map((w) =>
       workflow(w.path, w.definition!, relationshipWrites(w.definition!.steps)),

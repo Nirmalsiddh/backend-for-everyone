@@ -8,9 +8,9 @@ import {
   errors,
 } from './schemas.js';
 import { synthetic } from './examples.js';
-export function crud(resource: DocsSnapshot['resources'][number]) {
+export function crud(resource: DocsSnapshot['resources'][number], options: { compact?: boolean } = {}) {
   const fields = [...resource.fields!].sort((a, b) =>
-    a.name.localeCompare(b.name),
+    options.compact ? (a.name < b.name ? -1 : a.name > b.name ? 1 : 0) : a.name.localeCompare(b.name),
   );
   const record = objectSchema(
     {
@@ -32,7 +32,7 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
         : undefined;
     const includes = ['get', 'list'].includes(op) ? (resource.includes ?? []).filter((include) =>
       (include.policy.mode === 'key_only') === (policy.mode === 'key_only')) : [];
-    const readRecord = includes.length ? objectSchema({
+    const readRecord = includes.length && !options.compact ? objectSchema({
       ...record.properties,
       _related: {
         ...objectSchema(Object.fromEntries(includes.map((include) => [include.name, {
@@ -175,7 +175,7 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
         content: {
           'application/json': {
             schema: body,
-            ...(op === 'update' && !writable.length
+            ...(options.compact || (op === 'update' && !writable.length)
               ? {}
               : { example: synthetic(body) }),
           },
@@ -203,16 +203,16 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
                 ['data', 'pagination'],
               ),
               {
-                data: [synthetic(record)],
+                data: options.compact ? [] : [synthetic(record)],
                 pagination: { limit: 25, offset: 0, hasMore: false },
               },
             )
           : response(
               op === 'create' ? 'Created record' : 'Record',
               ['get', 'list'].includes(op) ? readRecord : record,
-              synthetic(record),
+              options.compact ? undefined : synthetic(record),
             );
-    if (includes.length) {
+    if (includes.length && !options.compact) {
       const base = synthetic(record) as Record<string, unknown>;
       const expanded = { ...base, _related: Object.fromEntries(includes.slice(0, 2).map((include) => [include.name,
         synthetic(objectSchema({ id: uuid, ...Object.fromEntries(include.fields.map((f) => [f.name, fieldSchema(f)])) }, ['id', ...include.fields.map((f) => f.name)])),

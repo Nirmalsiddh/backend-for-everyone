@@ -31,6 +31,8 @@ export interface DocsSnapshot {
   }[];
   tables: {
     id: string;
+    name?: string;
+    connectionId?: string;
     appliedRevision: number | null;
     applied: boolean;
     fields?: FieldDefinition[] | null;
@@ -40,5 +42,6 @@ export interface DocsRepository {
   snapshot(
     projectId: string,
     ownerId: string,
+    scope?: { workflows: boolean },
   ): Promise<DocsSnapshot | undefined>;
 }

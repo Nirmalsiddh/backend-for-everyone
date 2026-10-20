@@ -24,3 +24,5 @@ export function serializeRuntimeQuery(options?: {
   limit?: string | number; offset?: string | number; sort?: string; direction?: string;
   filters?: PublicFilter[]; includes?: string[];
 }): string;
+
+export function runtimeQuerySerializerSource(): string;

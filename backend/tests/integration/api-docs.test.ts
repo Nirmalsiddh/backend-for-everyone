@@ -1,3 +1,4 @@
+import { TypeScriptClientService } from '../../src/modules/typescript-client/service.js';
 import { projectAuthConfigs } from '../../src/database/platform-db/schema.js';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
@@ -159,6 +160,8 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
         'platform_auth_sessions_' + projectId.replaceAll('-', ''),
       catalog: {},
     });
+  const sdk = new TypeScriptClientService(repo);
+  const initialSdk = await sdk.get(projectId, owner);
   const initial = await service.get(projectId, owner);
   assert.equal(
     (
@@ -188,6 +191,9 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     })
     .where(eq(workflowEndpoints.id, workflowId));
   assert.deepEqual(await service.get(projectId, owner), initial);
+  assert.deepEqual(await sdk.get(projectId, owner), initialSdk);
+  await db.update(schemaTables).set({appliedPhysicalRevision: 2}).where(eq(schemaTables.id,tableId));
+  assert.deepEqual(await sdk.get(projectId, owner), initialSdk);
   const updated = {
     ...definition,
     fields: fields.map((f, i) =>
@@ -203,6 +209,9 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     })
     .where(eq(schemaTables.id, tableId));
   await assert.rejects(service.get(projectId, owner), { statusCode: 503 }); // workflow dependency is stale
+  const appliedSdk = await sdk.get(projectId, owner);
+  assert.notEqual(appliedSdk.source, initialSdk.source);
+  assert.ok(appliedSdk.source.includes("applied_title"));
   await db
     .update(workflowEndpoints)
     .set({ enabled: false })
@@ -236,6 +245,7 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     .update(endpoints)
     .set({ enabledOperations: ['list'] })
     .where(eq(endpoints.projectId, projectId));
+  assert.notEqual((await sdk.get(projectId, owner)).contractHash, initialSdk.contractHash);
   const disabled = await service.get(projectId, owner);
   assert.ok(!disabled.paths['/tasks']!.post);
   assert.ok(!disabled.paths['/tasks/{id}']);

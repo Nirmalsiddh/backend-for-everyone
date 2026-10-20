@@ -2,6 +2,14 @@
 
 A PostgreSQL-backed API builder, with a management API foundation, encrypted customer PostgreSQL connection management, a Schema Builder MVP, predefined runtime APIs, customer-owned end-user authentication, and custom transactional workflows. Customer application data will remain in customer-owned databases; platform PostgreSQL stores management metadata only.
 
+## v0.11.0-alpha.1 — TypeScript Client & Types Generation MVP
+
+Project Docs can generate a standalone, dependency-free TypeScript runtime client
+from applied CRUD/auth contracts. It includes exact scalar/input/query/include
+types, separate key/session credentials and safe errors, without migrations or
+workflow helpers. See [client contract](TYPESCRIPT_CLIENT.md) and
+[validation evidence](TYPESCRIPT_CLIENT_VALIDATION.md).
+
 ## v0.10.0-alpha.1 — Advanced Querying MVP
 
 Generated list APIs support typed equality/inequality, numeric/date/time ranges,
