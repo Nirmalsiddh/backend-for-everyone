@@ -192,6 +192,95 @@ test('customer-owned authentication and ownership authorization real PostgreSQL'
     const temp = await create(aliceToken, 'delete-me'); assert.equal((await app.inject({ method: 'DELETE', url: `${base}/orders/${temp.json().id}`, headers: bearer(aliceToken) })).statusCode, 204);
     const filtered = await app.inject({ url: `${base}/orders?filter[title]=${encodeURIComponent("x' OR true --")}`, headers: bearer(aliceToken) }); assert.equal(filtered.json().data.length, 0);
   });
+  await t.test('independent relationship GET credential, owner and admin matrix', async () => {
+    const targetTableId = ordersPath.split('/').at(-1)!;
+    const refs = await provisionTable('order_refs', [
+      { name: 'owner_id', type: 'uuid', nullable: false },
+      { name: 'order_id', type: 'uuid', nullable: true, relationship: { tableId: targetTableId, onDelete: 'restrict' } },
+    ]);
+    const referenceOwner = refs.table.fields[0].id;
+    const enabled = await app.inject({ method: 'PUT', url: refs.path + '/api', headers: auth, payload: { enabledOperations: ['get', 'list'], expectedAppliedRevision: 1, expectedConfigRevision: 0 } });
+    assert.equal(enabled.statusCode, 200, enabled.body);
+    const parent = await dependencies.endpointRepository.get(project.id, ownerId, refs.table.id);
+    const target = await dependencies.endpointRepository.get(project.id, ownerId, targetTableId);
+    const referenceId = randomUUID();
+    await customer.query(`INSERT INTO ${q(schema)}."order_refs" (id,owner_id,order_id) VALUES ($1,$2,$3)`, [referenceId, aliceId, bobOrder]);
+    const readKeyRecord = (await app.inject({ method: 'POST', url: management + '/api-keys', headers: auth, payload: { name: 'Read expansion', scope: 'read' } })).json();
+    const readKey = readKeyRecord.key;
+    const read = (credential: string) => app.inject({ url: `${base}/order_refs/${referenceId}?include=order_id`, headers: bearer(credential) });
+    try {
+      for (const parentMode of ['key_only', 'authenticated', 'owner'] as const) {
+        const policy: OperationPolicy = parentMode === 'owner' ? { mode: 'owner', ownerFieldId: referenceOwner, allowAdmin: true } : { mode: parentMode };
+        await db.update(endpoints).set({ policies: { get: policy, list: policy } }).where(eq(endpoints.id, parent.id));
+        for (const targetMode of ['disabled', 'key_only', 'authenticated', 'owner'] as const) {
+          const targetPolicy: OperationPolicy = targetMode === 'owner' ? { mode: 'owner', ownerFieldId, allowAdmin: false } : { mode: targetMode === 'disabled' ? 'key_only' : targetMode };
+          await db.update(endpoints).set({ enabledOperations: targetMode === 'disabled' ? ['list'] : ['get', 'list'], policies: { get: targetPolicy, list: { mode: 'key_only' } } }).where(eq(endpoints.id, target.id));
+          for (const identity of [{ token: readKey, user: false, admin: false }, { token: key, user: false, admin: false }, { token: aliceToken, user: true, admin: false }, { token: aliceToken, user: true, admin: true }]) {
+            await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role=$1 WHERE id=$2`, [identity.admin ? 'admin' : 'user', aliceId]);
+            const result = await read(identity.token);
+            const parentCompatible = (parentMode === 'key_only') !== identity.user;
+            const targetCompatible = targetMode !== 'disabled' && ((targetMode === 'key_only') !== identity.user);
+            assert.equal(result.statusCode, !parentCompatible ? 401 : !targetCompatible ? 403 : 200, result.body);
+            if (result.statusCode === 403) assert.equal(result.json().code, 'INCLUDE_UNAVAILABLE');
+            if (result.statusCode === 200) {
+              assert.equal(result.json().order_id, bobOrder);
+              assert.equal(result.json()._related.order_id?.id ?? null, targetMode === 'owner' ? null : bobOrder);
+            }
+          }
+        }
+      }
+      await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role='admin' WHERE id=$1`, [aliceId]);
+      await customer.query(`UPDATE ${q(schema)}."order_refs" SET owner_id=$1 WHERE id=$2`, [bobId, referenceId]);
+      for (const parentAdmin of [false, true]) for (const targetAdmin of [false, true]) {
+        await db.update(endpoints).set({ policies: { get: { mode: 'owner', ownerFieldId: referenceOwner, allowAdmin: parentAdmin } } }).where(eq(endpoints.id, parent.id));
+        await db.update(endpoints).set({ enabledOperations: ['get'], policies: { get: { mode: 'owner', ownerFieldId, allowAdmin: targetAdmin } } }).where(eq(endpoints.id, target.id));
+        const result = await read(aliceToken);
+        assert.equal(result.statusCode, parentAdmin ? 200 : 404, result.body);
+        if (parentAdmin) assert.equal(result.json()._related.order_id?.id ?? null, targetAdmin ? bobOrder : null);
+      }
+      await customer.query(`UPDATE ${q(schema)}."order_refs" SET owner_id=$1,order_id=$2 WHERE id=$3`, [aliceId, aliceOrder, referenceId]);
+      await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role='user' WHERE id=$1`, [aliceId]);
+      const owned = await read(aliceToken);
+      assert.equal(owned.statusCode, 200, owned.body); assert.equal(owned.json()._related.order_id.id, aliceOrder);
+      for (const change of ['revoke', 'role'] as const) {
+        let changed = false;
+        const race = buildApp({ ...dependencies, platformAuthRepository: memoryPlatformAuthRepository(ownerId), env,
+          runtimeRepository: {
+            authenticate: (slug, hash) => dependencies.runtimeRepository.authenticate(slug, hash),
+            resolve: async (projectId, resource, includes) => {
+              const snapshot = await dependencies.runtimeRepository.resolve(projectId, resource, includes);
+              if (!changed) {
+                changed = true;
+                if (change === 'revoke') await customer.query(`UPDATE ${q(schema)}.${q(sessionsName)} SET revoked_at=CURRENT_TIMESTAMP WHERE token_hash=$1`, [tokenHash(aliceToken)]);
+                else await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role='admin' WHERE id=$1`, [aliceId]);
+              }
+              return snapshot;
+            },
+          },
+        });
+        try {
+          const rejected = await race.inject({ url: `${base}/order_refs/${referenceId}?include=order_id`, headers: bearer(aliceToken) });
+          assert.equal(rejected.statusCode, 401, rejected.body);
+          assert.ok(!rejected.body.includes('Bob'));
+        } finally {
+          await race.close();
+          await customer.query(`UPDATE ${q(schema)}.${q(sessionsName)} SET revoked_at=NULL WHERE token_hash=$1`, [tokenHash(aliceToken)]);
+          await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role='user' WHERE id=$1`, [aliceId]);
+        }
+      }
+
+      await db.update(endpoints).set({ policies: { get: { mode: 'key_only' } } }).where(eq(endpoints.id, parent.id));
+      await db.update(endpoints).set({ enabledOperations: ['get'], policies: { get: { mode: 'key_only' } } }).where(eq(endpoints.id, target.id));
+      assert.equal((await read(readKey)).statusCode, 200);
+      const revoked = await app.inject({ method: 'DELETE', url: management + '/api-keys/' + readKeyRecord.id, headers: auth });
+      assert.equal(revoked.statusCode, 204, revoked.body);
+      assert.equal((await read(readKey)).statusCode, 401);
+      assert.equal((await read(auth.authorization.slice('Bearer '.length))).statusCode, 401);
+    } finally {
+      await db.update(endpoints).set({ enabledOperations: target.enabledOperations, policies: target.policies ?? {} }).where(eq(endpoints.id, target.id));
+      await customer.query(`UPDATE ${q(schema)}.${q(usersName)} SET role='user' WHERE id=$1`, [aliceId]);
+    }
+  });
   await t.test('role promotion/demotion is management-only and admin bypass is explicit', async () => {
     const rolePath = `${management}/auth/users/${aliceId}/role`;
     assert.equal((await app.inject({ method: 'PATCH', url: rolePath, headers: bearer(aliceToken), payload: { role: 'admin' } })).statusCode, 401);

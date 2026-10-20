@@ -340,3 +340,26 @@ test('generated request/response examples satisfy their OpenAPI JSON Schemas', a
         }
     }
 });
+test('relationship includes validate as bounded optional nonrecursive OpenAPI responses', async () => {
+  const input = snapshot();
+  const resource = input.resources[0]!;
+  resource.includes = [{ name: 'customer_id', referenceName: 'customers', fields: [field('name', 'text')], policy: { mode: 'authenticated' } }];
+  const doc = generate(input, origin);
+  const validation = await new Validator().validate(doc as unknown as Record<string, unknown>);
+  assert.equal(validation.valid, true, JSON.stringify(validation.errors));
+  for (const operation of [doc.paths['/tasks']!.get!, doc.paths['/tasks/{id}']!.get!]) {
+    const parameter = operation.parameters!.find((candidate) => candidate.name === 'include')!;
+    assert.equal(parameter.style, 'form'); assert.equal(parameter.explode, false);
+    assert.equal(parameter.schema.maxItems, 2); assert.equal(parameter.schema.uniqueItems, true);
+    assert.deepEqual(parameter.schema.items!.enum, ['customer_id']);
+    assert.ok(operation.responses['403']);
+    const media = operation.responses['200']!.content!['application/json']!;
+    assert.ok(media.examples?.ordinary); assert.ok(media.examples?.expanded);
+    assert.ok(!JSON.stringify(media.examples.ordinary).includes('_related'));
+    assert.ok(JSON.stringify(media.examples.expanded).includes('_related'));
+  }
+  assert.ok(!doc.paths['/tasks']!.post!.parameters?.some((parameter) => parameter.name === 'include'));
+  resource.includes[0]!.policy = { mode: 'key_only' };
+  const incompatible = generate(input, origin);
+  assert.ok(!incompatible.paths['/tasks/{id}']!.get!.parameters?.some((parameter) => parameter.name === 'include'));
+});

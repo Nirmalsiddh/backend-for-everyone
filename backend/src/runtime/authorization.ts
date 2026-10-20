@@ -52,3 +52,14 @@ export function ownerColumn(definition: Definition, policy: OperationPolicy) {
   if (!field) throw badRequest();
   return field.name;
 }
+
+// Derive authorization independently for every operation, including related GETs.
+export function authorizeRead(definition: Definition, policy: OperationPolicy,
+  identity: import('./types.js').RuntimePrincipal) {
+  const isUser = 'kind' in identity && identity.kind === 'user';
+  if ((policy.mode === 'key_only') === isUser) return { compatible: false as const };
+  const owner = ownerColumn(definition, policy);
+  const ownership = owner && isUser && !(policy.mode === 'owner' && policy.allowAdmin && identity.role === 'admin')
+    ? { field: owner, userId: identity.userId } : undefined;
+  return { compatible: true as const, ownership };
+}

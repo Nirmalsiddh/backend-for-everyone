@@ -1,5 +1,6 @@
 import type { AuthService } from '../modules/project-auth/service.js';
-import { ownerColumn } from './authorization.js';
+import { parseInclude, invalidInclude, includeUnavailable, metadataChanged } from './include.js';
+import { authorizeRead, ownerColumn } from './authorization.js';
 import { CredentialEncryption } from '../security/encryption.js';
 import type { ConnectionConfig } from '../modules/database-connections/types.js';
 import { hashKey } from '../modules/api-keys/service.js';
@@ -20,18 +21,26 @@ export class RuntimeService {
   }
   async execute(identity: RuntimePrincipal, resource: string, operation: Operation, id: string | undefined, body: unknown,
     query: Record<string, unknown>, onTarget: (endpointId: string) => void = () => {}) {
+    const includes = parseInclude(query);
+    if (includes.length && !['get', 'list'].includes(operation)) throw invalidInclude();
+    const ordinaryQuery = { ...query };
+    delete ordinaryQuery.include;
     const isUser = 'kind' in identity && identity.kind === 'user';
     if ('scope' in identity && identity.scope === 'read' && !['list', 'get'].includes(operation)) throw new RuntimeError(403, 'INSUFFICIENT_SCOPE', 'API key does not permit writes');
-    const target = await this.repository.resolve(identity.projectId, resource);
-    if (!target || !target.enabledOperations.includes(operation)) throw notFound();
+    const target = await this.repository.resolve(identity.projectId, resource, includes);
+    if (!target || !target.enabledOperations.includes(operation)) {
+      if (includes.length) throw invalidInclude();
+      throw notFound();
+    }
     onTarget(target.endpointId);
     if (target.blocked || !target.applied) throw unavailable();
     const definition = target.applied.definition;
     if (/^(platform_|internal_|pg_|schema_)/.test(definition.name)) throw notFound();
     const policy = target.policies?.[operation] ?? { mode: 'key_only' as const };
-    if ((policy.mode === 'key_only' && isUser) || (policy.mode !== 'key_only' && !isUser)) throw unauthorized();
+    const authorization = authorizeRead(definition, policy, identity);
+    if (!authorization.compatible) throw unauthorized();
     const owner = ownerColumn(definition, policy);
-    const ownership = owner && isUser && !(policy.mode === 'owner' && policy.allowAdmin && identity.role === 'admin') ? { field: owner, userId: identity.userId } : undefined;
+    const ownership = authorization.ownership;
     if (isUser && identity.context.connection.id !== target.connection.id) throw unavailable();
     if (operation === 'update' && body && typeof body === 'object' && !Array.isArray(body)) {
       const protectedColumns = Object.values(target.policies ?? {}).map((candidate) => ownerColumn(definition, candidate)).filter((name): name is string => !!name);
@@ -42,20 +51,42 @@ export class RuntimeService {
       if (Object.hasOwn(body, owner)) throw badRequest();
       if (operation === 'create' && isUser) input = { ...body, [owner]: identity.userId };
     }
-    if (operation !== 'list' && Object.keys(query).length) throw badRequest();
+    if (operation !== 'list' && Object.keys(ordinaryQuery).length) throw badRequest();
     if (['get', 'update', 'delete'].includes(operation)) validateId(id ?? '');
     if (['list', 'get', 'delete'].includes(operation) && body !== undefined) throw badRequest();
-    const list = operation === 'list' ? validateList(definition, query) : undefined;
+    const list = operation === 'list' ? validateList(definition, ordinaryQuery) : undefined;
     const validated = ['create', 'update'].includes(operation) ? validateBody(definition, input, operation === 'create') : undefined;
     const compiled = operation === 'list' ? selectList(definition, list!, ownership) : operation === 'get' ? selectById(definition, id!, ownership)
       : operation === 'create' ? insertRow(definition, validated!) : operation === 'update' ? updateRow(definition, id!, validated!, ownership) : deleteRow(definition, id!, ownership);
+    const expandedIncludes = includes.map((name) => {
+      const field = definition.fields.find((candidate) => candidate.name === name);
+      if (!field?.relationship || field.type !== 'uuid') throw invalidInclude();
+      const related = target.relatedTargets?.[field.relationship.tableId];
+      if (!related || !related.applied || related.blocked ||
+          related.projectId !== target.projectId || related.connection.id !== target.connection.id ||
+          !related.enabledOperations.includes('get')) throw includeUnavailable();
+      if (/^(platform_|internal_|pg_|schema_)/.test(related.applied.definition.name) ||
+          related.applied.definition.schema !== definition.schema) throw unavailable();
+      const authorization = authorizeRead(related.applied.definition, related.policies?.get ?? { mode: 'key_only' }, identity);
+      if (!authorization.compatible) throw includeUnavailable();
+      return { name, applied: related.applied, ownership: authorization.ownership };
+    });
+    const expansion = includes.length ? {
+      includes: expandedIncludes, limit: list?.limit,
+      fence: async () => {
+        try {
+          const current = await this.repository.resolve(identity.projectId, resource, includes);
+          if (!target.fingerprint || current?.fingerprint !== target.fingerprint) throw metadataChanged();
+        } catch { throw metadataChanged(); }
+      },
+    } : undefined;
     const connection = target.connection;
     const config = this.encryption.decrypt<ConnectionConfig>(connection, `${connection.projectId}:${connection.id}`);
     if (config.schema !== definition.schema) throw unavailable();
-    const rows = await this.executor(config, target.applied, compiled, isUser ? { context: identity.context, tokenHash: identity.tokenHash, userId: identity.userId, role: identity.role } : undefined);
-    if (list) return { body: { data: rows.slice(0, list.limit).map((row) => serializeRow(definition, row)),
+    const rows = await this.executor(config, target.applied, compiled, isUser ? { context: identity.context, tokenHash: identity.tokenHash, userId: identity.userId, role: identity.role } : undefined, expansion);
+    if (list) return { body: { data: rows.slice(0, list.limit).map((row) => ({ ...serializeRow(definition, row), ...(expansion ? { _related: row._related } : {}) })),
       pagination: { limit: list.limit, offset: list.offset, hasMore: rows.length > list.limit } }, rowCount: Math.min(rows.length, list.limit) };
     if (!rows[0]) throw notFound();
-    return { body: operation === 'delete' ? undefined : serializeRow(definition, rows[0]), rowCount: 1 };
+    return { body: operation === 'delete' ? undefined : { ...serializeRow(definition, rows[0]), ...(expansion ? { _related: rows[0]._related } : {}) }, rowCount: 1 };
   }
 }

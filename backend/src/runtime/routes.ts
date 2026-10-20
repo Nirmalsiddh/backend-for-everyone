@@ -1,3 +1,4 @@
+import { invalidInclude, parseInclude } from './include.js';
 import { DestinationError } from '../security/customer-destination.js';
 import type { WorkflowEngine } from '../modules/workflows/engine.js';
 import type { WorkflowResult } from '../modules/workflows/types.js';
@@ -62,6 +63,12 @@ export async function runtimeRoutes(
   });
   app.addHook('onRequest', async (req, reply) => {
     contexts.set(req, {});
+    const includeKeys = [...new URL(req.raw.url ?? '/', 'http://runtime').searchParams.keys()]
+      .filter((key) => key === 'include' || /^include[.\[\]]/.test(key));
+    if (includeKeys.length) {
+      if (req.method !== 'GET' || /\/auth\//.test(req.url) || includeKeys.length !== 1 || includeKeys[0] !== 'include') throw invalidInclude();
+      parseInclude({ include: new URL(req.raw.url!, 'http://runtime').searchParams.get('include') });
+    }
     reply.header('cache-control', 'no-store');
     const origin = req.headers.origin;
     if (origin && options.allowedOrigins.includes(origin)) {
@@ -244,13 +251,14 @@ export async function runtimeRoutes(
         return reply.send(result.body);
       },
     });
-  app.setNotFoundHandler((req, reply) =>
-    reply
+  app.setNotFoundHandler((req, reply) => {
+    if (Object.keys(req.query as Record<string, unknown>).some((key) => key === 'include' || /^include[.\[\]]/.test(key))) throw invalidInclude();
+    return reply
       .code(404)
       .send({
         code: 'NOT_FOUND',
         message: 'Resource not found',
         requestId: req.id,
-      }),
-  );
+      });
+  });
 }

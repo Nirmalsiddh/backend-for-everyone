@@ -2,7 +2,7 @@
 import { RuntimeErrorGuide } from '@/components/runtime-error-guide';
 import { recordRuntimeSuccess } from '@/lib/project-visit';
 import { OperationExamples } from '@/components/operation-examples';
-import { docOperations } from '@/lib/api-docs';
+import { includeOptions, docOperations } from '@/lib/api-docs';
 import {
   CredentialGuide,
   ApplicationLoginGuide,
@@ -29,6 +29,7 @@ import type {
 } from '@/lib/contracts';
 import { useData, State, ErrorBox, Json } from '@/components/ui';
 type Form = {
+  includes: string[];
   target: string;
   recordId: string;
   body: string;
@@ -83,6 +84,7 @@ function Playground() {
   const [busy, setBusy] = useState(false);
   const f = useForm<Form>({
     defaultValues: {
+      includes: [],
       target: search.get('target') ?? '',
       recordId: '',
       body: '{}',
@@ -155,6 +157,8 @@ function Playground() {
         o.method.toUpperCase() === target.method &&
         o.path === `/${target.resource}${target.record ? '/{id}' : ''}`,
     );
+  const supportedIncludes = includeOptions(deployedOperation?.operation);
+  const selectedIncludes = values.includes.filter((name) => supportedIncludes.includes(name)).slice(0, 2);
   const runtimeContext = target?.resource.startsWith('auth/')
     ? ['auth/login', 'auth/signup'].includes(target.resource)
       ? 'public'
@@ -204,6 +208,7 @@ function Playground() {
           );
         handled.current = handoff;
         f.setValue('target', choice.id);
+        f.setValue('includes', []);
         f.setValue(
           'body',
           JSON.stringify(
@@ -284,6 +289,7 @@ function Playground() {
     handled.current = handoff ?? '';
     invalidate();
     f.setValue('target', value);
+    f.setValue('includes', []);
     const preset = value === 'auth:signup' || value === 'auth:login';
     f.setValue(
       'body',
@@ -406,6 +412,7 @@ function Playground() {
                   )
                     return;
                   const query = new URLSearchParams();
+                  if (selectedIncludes.length) query.set('include', selectedIncludes.join(','));
                   if (target.list) {
                     for (const key of [
                       'limit',
@@ -582,6 +589,13 @@ function Playground() {
                   </code>
                 </p>
               )}
+              {supportedIncludes.length > 0 && <fieldset disabled={busy}><legend>Include (maximum two)</legend>
+                {supportedIncludes.map((name) => <label key={name}><input type="checkbox"
+                  checked={selectedIncludes.includes(name)}
+                  disabled={!selectedIncludes.includes(name) && selectedIncludes.length >= 2}
+                  onChange={(event) => { invalidate(); f.setValue('includes', event.target.checked ? [...selectedIncludes, name] : selectedIncludes.filter((value) => value !== name), { shouldDirty: true }); }} />{name}</label>)}
+                <p>One level only. Target GET access applies independently. Unreadable related rows return null; raw UUIDs remain.</p>
+              </fieldset>}
               {target?.record && (
                 <label>
                   Record UUID
@@ -735,7 +749,7 @@ function Playground() {
       </p>
       <ErrorBox error={error} context={runtimeContext} />
       {docs.data && deployedOperation && (
-        <OperationExamples
+        <OperationExamples includes={selectedIncludes}
           document={docs.data}
           operationId={deployedOperation.operation.operationId}
         />

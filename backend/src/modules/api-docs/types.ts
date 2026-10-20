@@ -13,6 +13,7 @@ export interface DocsSnapshot {
   resources: {
     name: string;
     relationshipDelete?: boolean;
+    includes?: { name: string; referenceName: string; fields: FieldDefinition[]; policy: OperationPolicy }[];
     fields: FieldDefinition[] | null;
     operations: Operation[];
     policies: Partial<Record<Operation, OperationPolicy>>;

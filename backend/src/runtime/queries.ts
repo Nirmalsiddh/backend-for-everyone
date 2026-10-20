@@ -66,3 +66,9 @@ export function serializeRow(definition: Definition, row: Record<string, unknown
   }
   return result;
 }
+
+export function selectByIds(definition: Definition, ids: string[], ownership?: Ownership): Query {
+  const values: unknown[] = [ids];
+  const owner = ownership ? ` AND ${q(field(definition, ownership.field).name)} = ${parameter(values, ownership.userId, field(definition, ownership.field))}` : '';
+  return { text: `SELECT ${projection(definition)} FROM ONLY ${target(definition)} WHERE "id" = ANY($1::pg_catalog.uuid[])${owner} LIMIT 100`, values };
+}

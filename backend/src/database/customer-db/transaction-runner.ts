@@ -17,6 +17,7 @@ export interface CustomerTransactionRunner {
     config: ConnectionConfig,
     work: (client: SchemaClient) => Promise<T>,
     deadlineMs?: number,
+    options?: { expandedRead?: boolean },
   ): Promise<T>;
 }
 export function createTransactionRunner(
@@ -29,6 +30,7 @@ export function createTransactionRunner(
     config: ConnectionConfig,
     work: (client: SchemaClient) => Promise<T>,
     deadlineMs = 10000,
+    options?: { expandedRead?: boolean },
   ): Promise<T> => {
     if (active >= capacity)
       throw new RuntimeError(
@@ -40,6 +42,7 @@ export function createTransactionRunner(
     let raw: SchemaClient | undefined;
     let closing: Promise<void> | undefined;
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let workTimer: ReturnType<typeof setTimeout> | undefined;
     let transaction = false;
     let committing = false;
     let expired = false;
@@ -81,7 +84,7 @@ export function createTransactionRunner(
       }, deadlineMs);
       await raw.connect();
       remaining();
-      await raw.query('BEGIN');
+      await raw.query(options?.expandedRead ? 'BEGIN ISOLATION LEVEL REPEATABLE READ' : 'BEGIN');
       transaction = true;
       await raw.query('SET LOCAL search_path = pg_catalog');
       await raw.query("SET LOCAL TIME ZONE 'UTC'");
@@ -105,7 +108,11 @@ export function createTransactionRunner(
           return raw!.query(text, values);
         },
       };
-      const result = await work(client);
+      const result = options?.expandedRead ? await Promise.race([
+        work(client), new Promise<never>((_resolve, reject) => {
+          workTimer = setTimeout(() => reject(timeout()), Math.max(1, deadline - Date.now()));
+        }),
+      ]) : await work(client);
       remaining();
       committing = true;
       await raw.query('COMMIT');
@@ -113,6 +120,7 @@ export function createTransactionRunner(
       return result;
     } catch (error) {
       if (error instanceof DestinationError) throw error;
+      if (committing && options?.expandedRead) throw unavailable();
       if (committing)
         throw new RuntimeError(
           503,
@@ -148,6 +156,7 @@ export function createTransactionRunner(
       throw unavailable();
     } finally {
       if (timer) clearTimeout(timer);
+      if (workTimer) clearTimeout(workTimer);
       try {
         await end();
       } finally {

@@ -11,6 +11,7 @@ export interface JsonSchema {
 export interface Media {
   schema: JsonSchema;
   example?: unknown;
+  examples?: Record<string, { summary: string; value: unknown }>;
 }
 export interface ApiResponse {
   description: string;
@@ -27,6 +28,8 @@ export interface ApiOperation {
   parameters?: {
     name: string;
     in: 'path' | 'query';
+    style?: 'form';
+    explode?: boolean;
     required?: boolean;
     description?: string;
     schema: JsonSchema;

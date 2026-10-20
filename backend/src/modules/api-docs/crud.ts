@@ -29,6 +29,19 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
       policy.mode === 'owner'
         ? fields.find((f) => f.id === policy.ownerFieldId)?.name
         : undefined;
+    const includes = ['get', 'list'].includes(op) ? (resource.includes ?? []).filter((include) =>
+      (include.policy.mode === 'key_only') === (policy.mode === 'key_only')) : [];
+    const readRecord = includes.length ? objectSchema({
+      ...record.properties,
+      _related: {
+        ...objectSchema(Object.fromEntries(includes.map((include) => [include.name, {
+          anyOf: [objectSchema({ id: uuid, ...Object.fromEntries(include.fields.map((f) => [f.name, fieldSchema(f)])) },
+            ['id', ...include.fields.map((f) => f.name)]), { type: 'null' }],
+        }]))),
+        description: 'When a relationship is requested, its corresponding _related property is present.',
+        maxProperties: 2,
+      },
+    }, record.required) : record;
     const write = ['create', 'update', 'delete'].includes(op);
     const description =
       policy.mode === 'key_only'
@@ -56,7 +69,7 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
         500,
         503,
         504,
-        ...(write ? [403, 409] : []),
+        ...(write ? [403, 409] : includes.length ? [403] : []),
         ...(['create', 'update'].includes(op) ? [413] : []),
       ]),
     };
@@ -125,6 +138,16 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
           }),
       ];
     }
+    if (includes.length) {
+      operation.description += ' Relationship expansion is one level only, maximum two unique relationships. Raw FK UUIDs remain. Expansion does not grant access: target GET authorization independently applies. INCLUDE_UNAVAILABLE (403) means the runtime identity cannot satisfy related GET access or it is unavailable. Missing and owner-inaccessible related rows become null. Target catalog drift fails the request. When a relationship is requested, its corresponding _related property is present.';
+      for (const include of includes) operation.description += ` ${include.name}: UUID. References ${include.referenceName}. Expandable on GET/list when ${include.referenceName} GET access is compatible.`;
+      operation.parameters = [...(operation.parameters ?? []), {
+        name: 'include', in: 'query', style: 'form', explode: false,
+        description: 'Maximum two unique relationship field names; comma-separated, one level, no nesting. Target GET authorization still applies.',
+        schema: { type: 'array', maxItems: 2, minItems: 1, uniqueItems: true,
+          items: { type: 'string', enum: includes.map((include) => include.name) } },
+      }];
+    }
     if (op === 'create' || op === 'update') {
       const writable = fields.filter((f) =>
         op === 'create'
@@ -165,7 +188,7 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
               'Records and pagination',
               objectSchema(
                 {
-                  data: { type: 'array', items: record },
+                  data: { type: 'array', items: readRecord },
                   pagination: objectSchema(
                     {
                       limit: { type: 'integer' },
@@ -184,9 +207,21 @@ export function crud(resource: DocsSnapshot['resources'][number]) {
             )
           : response(
               op === 'create' ? 'Created record' : 'Record',
-              record,
+              ['get', 'list'].includes(op) ? readRecord : record,
               synthetic(record),
             );
+    if (includes.length) {
+      const base = synthetic(record) as Record<string, unknown>;
+      const expanded = { ...base, _related: Object.fromEntries(includes.slice(0, 2).map((include) => [include.name,
+        synthetic(objectSchema({ id: uuid, ...Object.fromEntries(include.fields.map((f) => [f.name, fieldSchema(f)])) }, ['id', ...include.fields.map((f) => f.name)])),
+      ])) };
+      const wrap = (value: unknown) => op === 'list' ? { data: [value], pagination: { limit: 25, offset: 0, hasMore: false } } : value;
+      const media = success.content?.['application/json'];
+      if (media) {
+        delete media.example;
+        media.examples = { ordinary: { summary: 'Without include', value: wrap(base) }, expanded: { summary: `With include=${includes.slice(0, 2).map((include) => include.name).join(',')}`, value: wrap(expanded) } };
+      }
+    }
     if (op === 'create')
       success.headers = {
         ...success.headers,

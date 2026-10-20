@@ -1,15 +1,22 @@
 'use client';
+import { useState } from 'react';
+import { includeOptions, operationById } from '@/lib/api-docs';
 import type { OpenApiDocument } from '@/lib/api-docs';
 import { operationExamples } from '@/lib/operation-examples';
 import { CopyButton } from './copy-button';
 export function OperationExamples({
   document,
   operationId,
+  includes,
 }: {
   document: OpenApiDocument;
   operationId: string;
+  includes?: string[];
 }) {
-  const examples = operationExamples(document, operationId);
+  const [selected, setSelected] = useState<string[]>([]);
+  const choices = includeOptions(operationById(document, operationId)?.operation);
+  const current = includes ?? selected.filter((name) => choices.includes(name));
+  const examples = operationExamples(document, operationId, current);
   if (!examples)
     return (
       <p>
@@ -20,6 +27,11 @@ export function OperationExamples({
   return (
     <details>
       <summary>Integration examples</summary>
+      {includes === undefined && choices.length > 0 && <fieldset><legend>Include (maximum two)</legend>
+        {choices.map((name) => <label key={name}><input type="checkbox" checked={current.includes(name)}
+          disabled={!current.includes(name) && current.length >= 2}
+          onChange={(event) => setSelected(event.target.checked ? [...current, name] : current.filter((value) => value !== name))} />{name}</label>)}
+      </fieldset>}
       {[
         ['curl', examples.curl],
         ['JavaScript', examples.javascript],

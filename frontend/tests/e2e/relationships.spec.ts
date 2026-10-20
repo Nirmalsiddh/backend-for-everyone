@@ -185,6 +185,12 @@ test('Reference editor creates enforced managed relationships with raw UUID Play
     .getByLabel('Equality filters (JSON object, up to five)')
     .fill(JSON.stringify({ customer_id: customerId }));
   await send(undefined, 200);
+  const ordinary = JSON.parse(await response.innerText());
+  expect(ordinary.data[0]).not.toHaveProperty('_related');
+  await page.getByRole('checkbox', { name: 'customer_id', exact: true }).check();
+  await send(undefined, 200);
+  const expanded = JSON.parse(await response.innerText());
+  expect(expanded.data[0]._related.customer_id).toEqual({ id: customerId, name: 'Example customer' });
   await page.goto(project + '/docs');
   await expect(
     page

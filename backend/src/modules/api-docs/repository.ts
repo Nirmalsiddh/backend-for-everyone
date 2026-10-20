@@ -26,6 +26,7 @@ export class PostgresDocsRepository implements DocsRepository {
         const resources = await tx
           .select({
             tableId: schemaTables.id,
+            connectionId: schemaTables.connectionId,
             name: endpoints.resourceName,
             operations: endpoints.enabledOperations,
             policies: endpoints.policies,
@@ -77,8 +78,9 @@ export class PostgresDocsRepository implements DocsRepository {
         const tables = await tx
           .select({
             id: schemaTables.id,
+            connectionId: schemaTables.connectionId,
             appliedRevision: schemaTables.appliedRevision,
-            name: schemaTables.name,
+            name: sql<string>`${schemaTables.appliedDefinition}->'definition'->>'name'`,
             fields: sql<
               FieldDefinition[] | null
             >`${schemaTables.appliedDefinition}->'definition'->'fields'`,
@@ -105,6 +107,15 @@ export class PostgresDocsRepository implements DocsRepository {
             tables.length > 500,
           resources: resources.map((r) => ({
             name: r.name,
+            includes: (r.fields ?? []).flatMap((field) => {
+              const target = resources.find((candidate) => candidate.tableId === field.relationship?.tableId &&
+                candidate.connectionId === r.connectionId && candidate.operations.includes('get'));
+              const table = tables.find((candidate) => candidate.id === target?.tableId && candidate.appliedRevision !== null);
+              return target?.fields && table && field.type === 'uuid' ? [{
+                name: field.name, referenceName: target.name, fields: target.fields,
+                policy: target.policies.get ?? { mode: 'key_only' as const },
+              }] : [];
+            }),
             relationshipDelete: tables.some((t) =>
               t.fields?.some((f) => f.relationship?.tableId === r.tableId),
             ),

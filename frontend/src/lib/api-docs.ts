@@ -29,3 +29,13 @@ export function downloadDocument(doc: OpenApiDocument) {
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 0);
 }
+
+export function includeOptions(operation?: ApiOperation): string[] {
+  const choices = operation?.parameters?.find((parameter) => parameter.in === 'query' && parameter.name === 'include')?.schema.items?.enum;
+  return Array.isArray(choices) ? choices.filter((name): name is string => typeof name === 'string') : [];
+}
+export function includeQuery(names: string[]) {
+  const query = new URLSearchParams();
+  if (names.length) query.set('include', names.join(','));
+  return query.toString();
+}

@@ -9,6 +9,7 @@ import { buildApp } from '../../src/app.js';
 import { createPlatformDatabase } from '../../src/database/platform-db/client.js';
 import {
   users,
+  endpoints,
   projects,
   databaseConnections,
   schemaTables,
@@ -23,6 +24,8 @@ import { PostgresApiKeyRepository } from '../../src/modules/api-keys/repository.
 import { PostgresRuntimeRepository } from '../../src/runtime/repository.js';
 import { PostgresWorkflowRepository } from '../../src/modules/workflows/repository.js';
 import { PostgresDocsRepository } from '../../src/modules/api-docs/repository.js';
+import { boundedClient, customerAdmission } from '../../src/database/customer-db/admission.js';
+import { createRuntimeExecutor } from '../../src/database/customer-db/runtime-executor.js';
 import { createSchemaExecutor } from '../../src/database/customer-db/schema-executor.js';
 import {
   generatePlan,
@@ -61,7 +64,27 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
   });
   const repository = new PostgresSchemaRepository(db);
   const encryption = new CredentialEncryption(env.connectionEncryptionKey);
+  const applicationQueries: string[] = [];
+  const controlQueries: string[] = [];
+  let afterParent: (() => Promise<void>) | undefined;
+  const runtimeExecutor = createRuntimeExecutor((options) => {
+    const client = boundedClient(options, 'runtime');
+    return {
+      connect: async () => { await client.connect(); },
+      end: async () => { await client.end(); },
+      on: (event, listener) => { client.on(event, listener); },
+      query: async (text, values) => {
+        (text.startsWith('SELECT ') && text.includes(' FROM ONLY ') ? applicationQueries : controlQueries).push(text);
+        const result = await client.query(text, values);
+        if (afterParent && text.includes(`FROM ONLY "${schema}"."orders"`)) {
+          const action = afterParent; afterParent = undefined; await action();
+        }
+        return { rows: result.rows };
+      },
+    };
+  });
   const deps = {
+    runtimeExecutor,
     projectRepository,
     schemaRepository: repository,
     connectionRepository: new PostgresConnectionRepository(db),
@@ -438,7 +461,112 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
       );
     },
   );
-  await t.test('workflow FK violation rolls back earlier write', async () => {
+  await t.test('expanded GET/list preserve base responses, pagination, nullable and independent target access', async () => {
+    const plain = await call('GET', `/orders/${orderId!}`);
+    assert.equal(plain.statusCode, 200, plain.body);
+    assert.equal(Object.hasOwn(plain.json(), '_related'), false);
+    const expanded = await call('GET', `/orders/${orderId!}?include=customer_id,other_customer_id`);
+    assert.equal(expanded.statusCode, 200, expanded.body);
+    assert.deepEqual(expanded.json(), { ...plain.json(), _related: { customer_id: { id: customerId, name: 'Example' }, other_customer_id: { id: customerId, name: 'Example' } } });
+    await call('PATCH', `/orders/${orderId!}`, { other_customer_id: null });
+    const nullable = await call('GET', `/orders/${orderId!}?include=other_customer_id`);
+    assert.equal(nullable.statusCode, 200, nullable.body);
+    assert.deepEqual(nullable.json()._related, { other_customer_id: null });
+    const ordinaryList = await call('GET', '/orders?limit=1&sort=total&direction=desc');
+    const expandedList = await call('GET', '/orders?limit=1&sort=total&direction=desc&include=customer_id');
+    assert.equal(expandedList.statusCode, 200, expandedList.body);
+    assert.deepEqual(expandedList.json().pagination, ordinaryList.json().pagination);
+    assert.deepEqual(expandedList.json().data.map(({ _related: _, ...row }: Record<string, unknown>) => row), ordinaryList.json().data);
+    const endpointRepository = deps.endpointRepository;
+    const original = await endpointRepository.get(project.id, owner, parent.id);
+    for (const configuration of [
+      { enabledOperations: original.enabledOperations.filter((op) => op !== 'get'), policies: original.policies ?? {} },
+      { enabledOperations: original.enabledOperations, policies: { ...original.policies, get: { mode: 'authenticated' as const } } },
+    ]) {
+      await db.update(endpoints).set(configuration).where(eq(endpoints.id, original.id));
+      for (const path of [`/orders/${orderId!}?include=other_customer_id`, '/orders?offset=10000&include=customer_id']) {
+        const denied = await call('GET', path);
+        assert.equal(denied.statusCode, 403, denied.body);
+        assert.equal(denied.json().code, 'INCLUDE_UNAVAILABLE');
+      }
+    }
+    await db.update(endpoints).set({ enabledOperations: original.enabledOperations, policies: original.policies ?? {} }).where(eq(endpoints.id, original.id));
+    for (const include of ['unknown', 'total', 'customer_id,customer_id', 'customer_id&include=other_customer_id']) {
+      const invalid = await call('GET', `/orders?include=${include}`);
+      assert.equal(invalid.statusCode, 400, invalid.body);
+      assert.equal(invalid.json().code, 'INVALID_INCLUDE');
+    }
+  });
+  await t.test('expanded metadata fence fails closed after policy and suspension changes', async () => {
+    const original = await deps.endpointRepository.get(project.id, owner, parent.id);
+    for (const change of ['target', 'parent', 'revision', 'targetRevision', 'relationship', 'suspension'] as const) {
+      const parentEndpoint = await deps.endpointRepository.get(project.id, owner, child.id);
+      afterParent = async () => {
+        if (change === 'target' || change === 'parent') await db.update(endpoints)
+          .set({ policies: { get: { mode: 'authenticated' } } })
+          .where(eq(endpoints.id, change === 'target' ? original.id : parentEndpoint.id));
+        if (change === 'revision') await db.update(schemaTables).set({ appliedRevision: child.appliedRevision! + 1, draftRevision: child.draftRevision + 1 }).where(eq(schemaTables.id, child.id));
+        if (change === 'targetRevision') await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision! + 1, draftRevision: parent.draftRevision + 1 }).where(eq(schemaTables.id, parent.id));
+        if (change === 'relationship') await db.update(schemaTables).set({ appliedDefinition: { ...child.appliedDefinition!, definition: { ...child.appliedDefinition!.definition, fields: child.appliedDefinition!.definition.fields.map(({ relationship: _, ...field }) => field) } } }).where(eq(schemaTables.id, child.id));
+        if (change === 'suspension') await db.update(projects).set({ runtimeState: 'suspended' }).where(eq(projects.id, project.id));
+      };
+      const result = await call('GET', `/orders/${orderId!}?include=customer_id`);
+      assert.equal(result.statusCode, 503, result.body);
+      assert.equal(result.json().code, 'RUNTIME_METADATA_CHANGED');
+      assert.ok(!result.body.includes('Example'));
+      await db.update(endpoints).set({ policies: original.policies ?? {} }).where(eq(endpoints.id, original.id));
+      await db.update(endpoints).set({ policies: parentEndpoint.policies ?? {} }).where(eq(endpoints.id, parentEndpoint.id));
+      await db.update(schemaTables).set({ appliedRevision: child.appliedRevision, draftRevision: child.draftRevision, appliedDefinition: child.appliedDefinition }).where(eq(schemaTables.id, child.id));
+      await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision, draftRevision: parent.draftRevision }).where(eq(schemaTables.id, parent.id));
+      await db.update(projects).set({ runtimeState: 'active' }).where(eq(projects.id, project.id));
+    }
+  });
+  await t.test('repeatable-read snapshot survives deterministic concurrent target update', async () => {
+    afterParent = async () => { await customer.query(`UPDATE ${q(schema)}."customers" SET name=$1 WHERE id=$2`, ['Changed concurrently', customerId]); };
+    const result = await call('GET', `/orders/${orderId!}?include=customer_id`);
+    assert.equal(result.statusCode, 200, result.body);
+    assert.equal(result.json()._related.customer_id.name, 'Example');
+    assert.equal((await call('GET', `/customers/${customerId}`)).json().name, 'Changed concurrently');
+    await customer.query(`UPDATE ${q(schema)}."customers" SET name=$1 WHERE id=$2`, ['Example', customerId]);
+  });
+  await t.test('repeatable-read snapshot retains parent FK and target through concurrent reference change and deletion', async () => {
+    const replacement = randomUUID();
+    await customer.query(`INSERT INTO ${q(schema)}."customers" (id,name) VALUES ($1,$2)`, [replacement, 'Replacement']);
+    afterParent = async () => {
+      await customer.query(`UPDATE ${q(schema)}."orders" SET customer_id=$1,other_customer_id=NULL WHERE id=$2`, [replacement, orderId!]);
+      await customer.query(`DELETE FROM ${q(schema)}."customers" WHERE id=$1`, [customerId]);
+    };
+    try {
+      const result = await call('GET', `/orders/${orderId!}?include=customer_id`);
+      assert.equal(result.statusCode, 200, result.body);
+      assert.equal(result.json().customer_id, customerId);
+      assert.deepEqual(result.json()._related.customer_id, { id: customerId, name: 'Example' });
+    } finally {
+      await customer.query(`INSERT INTO ${q(schema)}."customers" (id,name) VALUES ($1,$2) ON CONFLICT (id) DO NOTHING`, [customerId, 'Example']);
+      await customer.query(`UPDATE ${q(schema)}."orders" SET customer_id=$1 WHERE id=$2`, [customerId, orderId!]);
+      await customer.query(`DELETE FROM ${q(schema)}."customers" WHERE id=$1`, [replacement]);
+    }
+  });
+  await t.test('bounded query counts and local measurements for single and list expansions', async () => {
+    const ids: string[] = [];
+    for (let index = 0; index < 100; index++) {
+      const id = randomUUID(); ids.push(id);
+      await customer.query(`INSERT INTO ${q(schema)}."orders" (id,customer_id,total) VALUES ($1,$2,$3)`, [id, customerId, '1.00']);
+    }
+    try {
+      for (const size of [0, 1, 25, 100]) for (const count of [0, 1, 2]) {
+        applicationQueries.length = 0; controlQueries.length = 0;
+        const before = process.memoryUsage().heapUsed; const start = performance.now();
+        const include = count ? '&include=' + ['customer_id', 'other_customer_id'].slice(0, count).join(',') : '';
+        const result = await call('GET', size ? `/orders?limit=${size}${include}` : `/orders/${orderId!}${count ? '?' + include.slice(1) : ''}`);
+        assert.equal(result.statusCode, 200, result.body);
+        assert.equal(applicationQueries.length, 1 + count);
+        assert.equal(customerAdmission.snapshot().total, 0);
+        console.log(JSON.stringify({ operation: size ? 'list' : 'get', pageSize: size || 1, includes: count, dataQueries: applicationQueries.length, admissionTotalAfter: customerAdmission.snapshot().total, customerControlQueries: controlQueries.length, latencyMs: +(performance.now() - start).toFixed(2), responseBytes: Buffer.byteLength(result.body), heapDelta: process.memoryUsage().heapUsed - before }));
+      }
+    } finally { await customer.query(`DELETE FROM ${q(schema)}."orders" WHERE id=ANY($1::uuid[])`, [ids]); }
+  });
+  await t.test('workflow FK violation rolls back earlier write' , async () => {
     const first = randomUUID(),
       second = randomUUID();
     const definition: WorkflowDefinition = {
@@ -569,12 +697,14 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
         `ALTER TABLE ${q(schema)}.orders DISABLE TRIGGER ALL`,
       );
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       assert.equal((await call('GET', '/customers')).statusCode, 503);
       await customer.query(
         `ALTER TABLE ${q(schema)}.orders ENABLE TRIGGER ALL`,
       );
       await customer.query(`DROP INDEX ${q(schema)}.${q(index)}`);
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(
         `CREATE INDEX ${q(index)} ON ${q(schema)}.orders USING btree (customer_id)`,
       );
@@ -591,6 +721,7 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
         );
       await customer.query(`ALTER TABLE ${table} DROP CONSTRAINT ${q(fk)}`);
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       assert.equal((await call('GET', '/customers')).statusCode, 503);
       await customer.query(
         `CREATE TABLE ${q(schema)}.other_customers (id uuid PRIMARY KEY)`,
@@ -602,31 +733,37 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
         `ALTER TABLE ${table} ADD CONSTRAINT ${q(fk)} FOREIGN KEY(customer_id) REFERENCES ${q(schema)}.other_customers(id) ON DELETE RESTRICT ON UPDATE NO ACTION NOT DEFERRABLE`,
       );
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(`ALTER TABLE ${table} DROP CONSTRAINT ${q(fk)}`);
       await customer.query(`DROP TABLE ${q(schema)}.other_customers`);
       await recreate('CASCADE');
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(`ALTER TABLE ${table} DROP CONSTRAINT ${q(fk)}`);
       await recreate('RESTRICT', 'NOT VALID');
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(`ALTER TABLE ${table} VALIDATE CONSTRAINT ${q(fk)}`);
       assert.equal((await call('GET', '/orders')).statusCode, 200);
       await customer.query(
         `ALTER TABLE ${table} ALTER CONSTRAINT ${q(fk)} DEFERRABLE`,
       );
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(
         `ALTER TABLE ${table} ALTER CONSTRAINT ${q(fk)} NOT DEFERRABLE`,
       );
       await customer.query(`DROP INDEX ${q(schema)}.${q(index)}`);
       await customer.query(`CREATE INDEX ${q(index)} ON ${table}(total)`);
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(`DROP INDEX ${q(schema)}.${q(index)}`);
       await customer.query(`CREATE INDEX ${q(index)} ON ${table}(customer_id)`);
       await customer.query(
         `ALTER TABLE ${table} ADD CONSTRAINT unexpected_fk FOREIGN KEY(customer_id) REFERENCES ${q(schema)}.customers(id)`,
       );
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       assert.equal((await call('GET', '/customers')).statusCode, 503);
       await customer.query(
         `ALTER TABLE ${table} DROP CONSTRAINT unexpected_fk`,
@@ -635,6 +772,7 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
         `ALTER TABLE ${q(schema)}.customers ADD COLUMN external_drift text`,
       );
       assert.equal((await call('GET', '/orders')).statusCode, 503);
+      assert.equal((await call('GET', '/orders?include=customer_id')).json().code, 'RUNTIME_UNAVAILABLE');
       await customer.query(
         `ALTER TABLE ${q(schema)}.customers DROP COLUMN external_drift`,
       );
