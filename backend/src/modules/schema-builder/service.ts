@@ -106,6 +106,7 @@ export class SchemaService {
       planHash: plan.hash,
       draftRevision: plan.revision,
       operation: plan.operation,
+      ...(plan.evolution ? { actions: plan.evolution.actions.map((action) => action.kind === 'set_not_null' ? { kind: action.kind, field: plan.definition.fields.find((field) => field.id === action.fieldId)!.name } : { kind: action.kind, fields: action.index.fieldIds.map((id) => plan.definition.fields.find((field) => field.id === id)!.name) }) } : {}),
       relationships: plan.definition.fields
         .filter((f) => f.relationship)
         .map((f) => ({

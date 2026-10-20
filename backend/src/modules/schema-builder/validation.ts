@@ -149,7 +149,7 @@ export function normalizeDraft(
   input: DraftInput,
   existing: FieldDefinition[] = [],
 ): { name: string; fields: FieldDefinition[] } {
-  exactKeys(input, ['name', 'fields']);
+  exactKeys(input, ['name', 'fields', 'indexes']);
   validateIdentifier(input.name);
   if (!Array.isArray(input.fields) || input.fields.length > 100)
     throw invalid('A table supports at most 100 custom fields');

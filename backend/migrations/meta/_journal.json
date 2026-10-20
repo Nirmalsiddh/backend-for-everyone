@@ -64,6 +64,13 @@
       "when": 1792484285200,
       "tag": "0008_schema_relationships",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792504417438,
+      "tag": "0009_managed_indexes",
+      "breakpoints": true
     }
   ]
 }

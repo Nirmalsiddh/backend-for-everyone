@@ -65,6 +65,7 @@ const field = {
   },
 } as const;
 const draftProperties = {
+  indexes: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, required: ['fieldIds', 'unique'], properties: { id: { type: 'string', pattern: uuidPattern }, fieldIds: { type: 'array', minItems: 1, maxItems: 4, uniqueItems: true, items: { type: 'string', pattern: uuidPattern } }, unique: { type: 'boolean' } } } },
   name: { type: 'string', maxLength: 63 },
   fields: { type: 'array', maxItems: 100, items: field },
 } as const;

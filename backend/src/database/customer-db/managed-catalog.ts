@@ -7,7 +7,7 @@ import {
   quoteIdentifier as q,
 } from '../../modules/schema-builder/plan.js';
 import { conflict } from '../../modules/schema-builder/errors.js';
-import { catalog } from './catalog.js';
+import { readCatalog } from './index-catalog.js';
 import type { SchemaClient } from './schema-executor.js';
 
 // FK targets are catalog dependencies, not additional customer workflow actions.
@@ -44,11 +44,12 @@ export async function checkManagedCatalogs(
   for (const applied of sorted)
     if (
       canonical(
-        await catalog(
+        await readCatalog(
           client,
           applied.definition.schema,
           applied.definition.name,
           tables,
+          applied.catalog,
         ),
       ) !== canonical(applied.catalog)
     )

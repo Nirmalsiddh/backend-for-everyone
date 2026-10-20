@@ -8,6 +8,8 @@ export function schemaTableDto(table: TableRecord) {
     name: table.name,
     draftRevision: table.draftRevision,
     appliedRevision: table.appliedRevision,
+    appliedPhysicalRevision: table.appliedPhysicalRevision ?? table.appliedRevision,
+    indexes: table.indexes ?? [],
     createdAt: table.createdAt,
     updatedAt: table.updatedAt,
     fields: table.fields,

@@ -100,6 +100,7 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     name: 'tasks',
     draftRevision: 1,
     appliedRevision: 1,
+    appliedPhysicalRevision: 1,
     appliedDefinition: { definition, catalog: { secret: 'catalog-secret' } },
   });
   await db
@@ -198,6 +199,7 @@ test('PostgreSQL docs snapshot: ownership, draft isolation, applied/published ch
     .set({
       appliedDefinition: { definition: updated, catalog: {} },
       appliedRevision: 2,
+      appliedPhysicalRevision: 2,
     })
     .where(eq(schemaTables.id, tableId));
   await assert.rejects(service.get(projectId, owner), { statusCode: 503 }); // workflow dependency is stale

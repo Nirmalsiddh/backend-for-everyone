@@ -1,16 +1,19 @@
+import { normalizeIndexes } from './indexes.js';
 import { enforceQuota } from '../../operations/quotas.js';
 import { randomUUID } from 'node:crypto';
-import { and, asc, desc, eq, inArray } from 'drizzle-orm';
+import { and, asc, desc, eq, inArray, notInArray } from 'drizzle-orm';
 import type { PlatformDatabase } from '../../database/platform-db/client.js';
 import {
   databaseConnections,
   projects,
   schemaFields,
+  schemaIndexes,
   schemaMigrations,
   schemaTables,
 } from '../../database/platform-db/schema.js';
 import { conflict, missing } from './errors.js';
-import { generatePlan } from './plan.js';
+import { canonical, generatePlan } from './plan.js';
+import { needsEvolution } from './evolution.js';
 import { normalizeDraft, validateTargetSchema } from './validation.js';
 import type {
   DraftInput,
@@ -87,6 +90,8 @@ export class PostgresSchemaRepository implements SchemaRepository {
       .from(schemaFields)
       .where(eq(schemaFields.tableId, tableId))
       .orderBy(asc(schemaFields.position));
+    const indexRows = await reader.select().from(schemaIndexes).where(eq(schemaIndexes.tableId, tableId)).orderBy(asc(schemaIndexes.id));
+    const indexes = indexRows.map(({ id, specificationVersion, fieldIds, unique }) => ({ id, specificationVersion, fieldIds, unique }));
     const [applyStatus] = await reader
       .select({
         status: schemaMigrations.status,
@@ -105,6 +110,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
       .limit(1);
     return {
       ...table,
+      indexes,
       applyStatus: applyStatus ?? null,
       fields: fields.map(({ tableId: _tableId, relationship, ...field }) => ({
         ...field,
@@ -158,6 +164,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
         await enforceQuota(tx, 'schema_tables', projectId);
         validateTargetSchema(target.schemaName);
         const draft = normalizeDraft(input);
+        const indexes = normalizeIndexes(input.indexes, draft.fields);
         const [table] = await tx
           .insert(schemaTables)
           .values({
@@ -169,7 +176,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
           .returning();
         if (!table) throw new Error('Insert returned no table');
         generatePlan(
-          { ...table, fields: draft.fields },
+          { ...table, fields: draft.fields, indexes },
           await this.managed(tx, projectId, ownerId),
         );
         if (draft.fields.length)
@@ -178,7 +185,8 @@ export class PostgresSchemaRepository implements SchemaRepository {
             .values(
               draft.fields.map((field) => ({ ...field, tableId: table.id })),
             );
-        return { ...table, fields: draft.fields };
+        if (indexes.length) await tx.insert(schemaIndexes).values(indexes.map((index) => ({ ...index, tableId: table.id })));
+        return { ...table, fields: draft.fields, indexes };
       }),
     );
   }
@@ -197,13 +205,18 @@ export class PostgresSchemaRepository implements SchemaRepository {
         if (revision !== table.draftRevision)
           throw conflict('Draft revision changed');
         const draft = normalizeDraft(input, table.fields);
+        const indexes = normalizeIndexes(input.indexes, draft.fields, table.indexes, table.appliedDefinition?.definition.indexes);
         const candidate = {
           ...table,
           ...draft,
+          indexes,
           draftRevision: table.draftRevision + 1,
           updatedAt: new Date(),
         };
-        generatePlan(candidate, await this.managed(tx, projectId, ownerId));
+        const before = table.appliedDefinition?.definition;
+        const revertedEvolution = needsEvolution(table) && before && candidate.name === before.name &&
+          canonical(candidate.fields) === canonical(before.fields) && canonical(candidate.indexes) === canonical(before.indexes ?? []);
+        if (!revertedEvolution) generatePlan(candidate, await this.managed(tx, projectId, ownerId));
         await tx
           .update(schemaTables)
           .set({
@@ -214,6 +227,8 @@ export class PostgresSchemaRepository implements SchemaRepository {
           .where(
             and(this.owned(projectId, ownerId), eq(schemaTables.id, tableId)),
           );
+        await tx.delete(schemaIndexes).where(and(eq(schemaIndexes.tableId, tableId), indexes.length ? notInArray(schemaIndexes.id, indexes.map((index) => index.id)) : undefined));
+        for (const index of indexes) await tx.insert(schemaIndexes).values({ ...index, tableId }).onConflictDoUpdate({ target: schemaIndexes.id, set: { fieldIds: index.fieldIds, unique: index.unique, updatedAt: new Date() } });
         await tx.delete(schemaFields).where(eq(schemaFields.tableId, tableId));
         if (draft.fields.length)
           await tx
@@ -256,6 +271,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
           draftRevision: plan.revision,
           planHash: plan.hash,
           definition: plan.definition,
+          ...(plan.evolution ? { planContext: plan.evolution } : {}),
           ...(plan.version === 2
             ? {
                 planContext: {
@@ -305,7 +321,8 @@ export class PostgresSchemaRepository implements SchemaRepository {
         await tx
           .update(schemaTables)
           .set({
-            appliedRevision: plan.revision,
+            appliedRevision: plan.evolution?.contractChange === false ? table.appliedRevision : plan.revision,
+            appliedPhysicalRevision: plan.revision,
             appliedDefinition: { definition: plan.definition, catalog },
             updatedAt: new Date(),
           })

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import { test } from 'node:test';
 import { normalizeDraft, validateIdentifier, validateTargetSchema } from '../src/modules/schema-builder/validation.js';
-import { canonical, generatePlan, quoteIdentifier } from '../src/modules/schema-builder/plan.js';
+import { canonical, generatePlan, generateLegacyPlan, quoteIdentifier } from '../src/modules/schema-builder/plan.js';
 import type { DraftInput, FieldInput, TableRecord } from '../src/modules/schema-builder/types.js';
 
 function table(input: DraftInput): TableRecord {
@@ -77,11 +77,14 @@ test('draft edits preserve field identities and applied tables allow only nullab
   const plan = generatePlan({ ...applied, ...additions, draftRevision: 2 });
   assert.equal(plan.operation, 'add_columns');
   assert.deepEqual(plan.statements, ['ALTER TABLE "public"."products" ADD COLUMN "notes" pg_catalog.text;']);
+  const required = { ...applied, fields: record.fields.map((field) => ({ ...field, nullable: false })), draftRevision: 2 };
+  assert.equal(generatePlan(required).evolution?.actions[0]?.kind, 'set_not_null');
+  assert.throws(() => generateLegacyPlan(required), { code: 'SCHEMA_CONFLICT' });
   for (const changed of [
     { name: 'renamed', fields: record.fields }, { fields: [] },
     { fields: record.fields.map((field) => ({ ...field, name: 'renamed' })) },
     { fields: record.fields.map((field) => ({ ...field, type: 'integer' as const })) },
-    { fields: record.fields.map((field) => ({ ...field, nullable: false })) },
+
     { fields: [...record.fields, { ...additions.fields[1]!, nullable: false }] },
     { fields: [...record.fields, { ...additions.fields[1]!, unique: true }] },
     { fields: [...record.fields, { ...additions.fields[1]!, default: { kind: 'literal' as const, value: 'x' } }] },

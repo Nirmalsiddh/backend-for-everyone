@@ -9,12 +9,32 @@ export interface Relationship {
   tableId: string;
   onDelete: 'restrict';
 }
+export interface ManagedIndex {
+  id: string;
+  specificationVersion: 1;
+  fieldIds: string[];
+  unique: boolean;
+}
+export interface IndexInput { id?: string; fieldIds: string[]; unique: boolean }
+export type EvolutionAction = { kind: 'create_index' | 'create_unique_index'; index: ManagedIndex }
+  | { kind: 'set_not_null'; fieldId: string };
+export interface EvolutionContext {
+  version: 3;
+  dependencies: RelationshipDependency[];
+  actions: EvolutionAction[];
+  contractChange: boolean;
+  before: AppliedDefinition | null;
+  appliedRevision: number | null;
+  appliedPhysicalRevision: number | null;
+}
 export interface ManagedTable {
   id: string;
   appliedRevision: number | null;
+  appliedPhysicalRevision?: number | null;
   appliedDefinition: AppliedDefinition | null;
 }
 export interface RelationshipDependency {
+  appliedPhysicalRevision?: number;
   tableId: string;
   appliedRevision: number;
   definition: Definition;
@@ -44,6 +64,7 @@ export interface FieldDefinition {
   default: FieldDefault | null;
 }
 export interface Definition {
+  indexes?: ManagedIndex[];
   schema: string;
   name: string;
   fields: FieldDefinition[];
@@ -62,10 +83,12 @@ export interface TableRecord {
   name: string;
   draftRevision: number;
   appliedRevision: number | null;
+  appliedPhysicalRevision?: number | null;
   appliedDefinition: AppliedDefinition | null;
   createdAt: Date;
   updatedAt: Date;
   fields: FieldDefinition[];
+  indexes?: ManagedIndex[];
   applyStatus?: {
     status: MigrationStatus;
     migrationId: string;
@@ -74,11 +97,13 @@ export interface TableRecord {
   } | null;
 }
 export interface DraftInput {
+  indexes?: IndexInput[];
   name: string;
   fields: FieldInput[];
 }
 export interface Plan {
-  version?: 2;
+  version?: 2 | 3;
+  evolution?: EvolutionContext;
   dependencies?: RelationshipDependency[];
   managedTables?: ManagedTable[];
   receipt?: { projectId: string; operationId: string };
@@ -86,7 +111,7 @@ export interface Plan {
   revision: number;
   definition: Definition;
   statements: string[];
-  operation: 'create_table' | 'add_columns';
+  operation: 'create_table' | 'add_columns' | 'evolve_table';
 }
 export type MigrationStatus =
   | 'applying'

@@ -5,7 +5,7 @@ import {
   customerConnectionOptions,
   DestinationError,
 } from '../../security/customer-destination.js';
-import { catalog } from './catalog.js';
+import { readCatalog, verifyPostCatalog } from './index-catalog.js';
 import pg from 'pg';
 import {
   canonical,
@@ -55,7 +55,8 @@ export function createSchemaExecutor(
         beforeTables.find(
           (t) => t.appliedDefinition?.definition.name === plan.definition.name,
         )?.id ?? '__candidate__',
-      appliedRevision: plan.revision,
+      appliedRevision: plan.evolution?.contractChange === false ? plan.evolution.appliedRevision : plan.revision,
+      appliedPhysicalRevision: plan.revision,
       appliedDefinition: { definition: plan.definition, catalog: null },
     });
     let committing = false;
@@ -88,11 +89,12 @@ export function createSchemaExecutor(
       for (const dependency of plan.dependencies ?? []) {
         if (
           canonical(
-            await catalog(
+            await readCatalog(
               client,
               dependency.definition.schema,
               dependency.definition.name,
               beforeTables,
+              dependency.catalog,
             ),
           ) !== canonical(dependency.catalog)
         )
@@ -116,32 +118,47 @@ export function createSchemaExecutor(
         await client.query(
           `LOCK TABLE ONLY ${target} IN ACCESS EXCLUSIVE MODE`,
         );
-        const actual = await catalog(
+        const actual = await readCatalog(
           client,
           plan.definition.schema,
           plan.definition.name,
           beforeTables,
+          applied.catalog,
         );
         if (canonical(actual) !== canonical(applied.catalog))
           throw conflict(
             'Customer schema drift detected; operator review is required',
           );
       }
+      for (const action of plan.evolution?.actions ?? []) {
+        let invalidData = false;
+        if (applied && action.kind === 'set_not_null') {
+          const field = plan.definition.fields.find((candidate) => candidate.id === action.fieldId)!;
+          invalidData = (await client.query(`SELECT 1 FROM ONLY ${target} WHERE ${quoteIdentifier(field.name)} IS NULL LIMIT 1`)).rows.length > 0;
+        } else if (applied && action.kind === 'create_unique_index') {
+          const columns = action.index.fieldIds.map((id) => quoteIdentifier(plan.definition.fields.find((field) => field.id === id)!.name));
+          invalidData = (await client.query(`SELECT 1 FROM ONLY ${target} WHERE ${columns.map((name) => `${name} IS NOT NULL`).join(' AND ')} GROUP BY ${columns.join(', ')} HAVING count(*) > 1 LIMIT 1`)).rows.length > 0;
+        }
+        if (invalidData) throw new SchemaError(422, 'SCHEMA_DATA_INVALID', 'Existing data does not satisfy the proposed constraint; no schema changes were applied');
+      }
       for (const statement of plan.statements) await client.query(statement);
-      const snapshot = await catalog(
+      const snapshot = await readCatalog(
         client,
         plan.definition.schema,
         plan.definition.name,
         afterTables,
+        plan.version === 3 ? { version: 3 } : applied?.catalog,
       );
+      verifyPostCatalog(snapshot, plan.definition);
       for (const dependency of plan.dependencies ?? []) {
         if (
           canonical(
-            await catalog(
+            await readCatalog(
               client,
               dependency.definition.schema,
               dependency.definition.name,
               afterTables,
+              dependency.catalog,
             ),
           ) !== canonical(dependency.catalog)
         )

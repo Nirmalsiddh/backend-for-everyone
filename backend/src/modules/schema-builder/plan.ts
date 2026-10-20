@@ -1,3 +1,4 @@
+import { generateEvolutionPlan, needsEvolution } from './evolution.js';
 import { relationshipDependencies } from './relationships.js';
 import { createHash } from 'node:crypto';
 import { conflict, invalid } from './errors.js';
@@ -61,7 +62,7 @@ function fieldSql(field: FieldDefinition) {
     : '';
   return `${quoteIdentifier(field.name)} ${sqlType(field)}${field.nullable ? '' : ' NOT NULL'}${field.default ? ` DEFAULT ${literal(field)}` : ''}${unique}`;
 }
-export function generatePlan(
+export function generateLegacyPlan(
   table: TableRecord,
   tables: ManagedTable[] = [],
   bound?: RelationshipDependency[],
@@ -155,4 +156,8 @@ export function generatePlan(
     statements,
     operation,
   };
+}
+
+export function generatePlan(table: TableRecord, tables: ManagedTable[] = [], bound?: RelationshipDependency[]): Plan {
+  return needsEvolution(table) ? generateEvolutionPlan(table, tables, bound) : generateLegacyPlan(table, tables, bound);
 }

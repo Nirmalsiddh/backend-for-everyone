@@ -2,6 +2,16 @@
 
 A PostgreSQL-backed API builder, with a management API foundation, encrypted customer PostgreSQL connection management, a Schema Builder MVP, predefined runtime APIs, customer-owned end-user authentication, and custom transactional workflows. Customer application data will remain in customer-owned databases; platform PostgreSQL stores management metadata only.
 
+## v0.9.0-alpha.1 — Managed Indexes & Safer Schema Evolution
+
+Managed B-tree indexes support one to four ordered UUID, integer, bigint, boolean,
+decimal or timestamp fields, with at most eight user indexes per table. Normal
+indexes advance physical state without staling workflows; unique indexes and
+nullable-to-required changes also advance the API contract revision. Existing
+nullable additions remain supported. See [the milestone contract](MANAGED_INDEXES.md)
+and [validation evidence](MANAGED_INDEXES_VALIDATION.md). No external deployment
+is included.
+
 ## Implemented milestone
 
 - Node.js 24 LTS, strict TypeScript, Fastify, and Drizzle with `pg`.

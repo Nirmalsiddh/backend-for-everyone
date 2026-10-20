@@ -6,6 +6,7 @@ import {
   databaseConnections,
   schemaTables,
   schemaFields,
+  schemaIndexes,
   schemaMigrations,
   projectAuthConfigs,
 } from '../database/platform-db/schema.js';
@@ -14,10 +15,11 @@ import { customerConnectionOptions } from '../security/customer-destination.js';
 import type { ConnectionConfig } from '../modules/database-connections/types.js';
 import {
   generatePlan,
+  generateLegacyPlan,
   canonical,
   quoteIdentifier,
 } from '../modules/schema-builder/plan.js';
-import { catalog } from '../database/customer-db/catalog.js';
+import { readCatalog } from '../database/customer-db/index-catalog.js';
 import { boundedClient } from '../database/customer-db/admission.js';
 import { readReceipt } from './receipts.js';
 export type Classification = 'PRE_STATE' | 'POST_STATE' | 'DIVERGED';
@@ -82,7 +84,7 @@ export async function reconcile(
           [config.schema, name],
         )
       ).rows.length > 0;
-    const inspect = async (name: string, tables: ManagedTable[] = []) => {
+    const inspect = async (name: string, tables: ManagedTable[] = [], expected?: unknown) => {
       const relation = await client.query(
         'SELECT c.relkind FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace WHERE n.nspname=$1 AND c.relname=$2',
         [config.schema, name],
@@ -93,7 +95,7 @@ export async function reconcile(
         `LOCK TABLE ONLY ${quoteIdentifier(config.schema)}.${quoteIdentifier(name)} IN ACCESS SHARE MODE`,
       );
       try {
-        return await catalog(client, config.schema, name, tables);
+        return await readCatalog(client, config.schema, name, tables, expected);
       } catch (error) {
         if (error instanceof SchemaError && error.code === 'SCHEMA_CONFLICT')
           return { unsupportedRelation: true };
@@ -114,7 +116,7 @@ export async function reconcile(
           ),
         );
       if (!operation) throw new Error('Active schema operation not found');
-      if (operation.planContext && operation.planContext.version !== 2)
+      if (operation.planContext && ![2, 3].includes(operation.planContext.version))
         throw new Error('Unsupported schema operation format');
       const [table] = await db
         .select()
@@ -141,6 +143,7 @@ export async function reconcile(
         .select({
           id: schemaTables.id,
           appliedRevision: schemaTables.appliedRevision,
+          appliedPhysicalRevision: schemaTables.appliedPhysicalRevision,
           appliedDefinition: schemaTables.appliedDefinition,
         })
         .from(schemaTables)
@@ -150,9 +153,11 @@ export async function reconcile(
             eq(schemaTables.connectionId, connection.id),
           ),
         );
-      const plan = generatePlan(
+      const indexes = (await db.select().from(schemaIndexes).where(eq(schemaIndexes.tableId, table.id))).map(({ id, specificationVersion, fieldIds, unique }) => ({ id, specificationVersion, fieldIds, unique })).sort((a, b) => a.id.localeCompare(b.id));
+      const plan = (operation.planContext?.version === 3 ? generatePlan : generateLegacyPlan)(
         {
           ...table,
+          indexes,
           fields: fields.map(
             ({ tableId: _tableId, relationship, ...field }) => ({
               ...field,
@@ -165,17 +170,19 @@ export async function reconcile(
       );
       if (
         plan.hash !== operation.planHash ||
+        (plan.version === 3 && canonical(plan.evolution) !== canonical(operation.planContext)) ||
         canonical(plan.definition) !== canonical(operation.definition)
       )
         throw new Error('Operation plan does not match durable metadata');
       const postTables = managed.filter((t) => t.id !== table.id);
       postTables.push({
         id: table.id,
-        appliedRevision: operation.draftRevision,
+        appliedRevision: plan.evolution?.contractChange === false ? table.appliedRevision : operation.draftRevision,
+        appliedPhysicalRevision: operation.draftRevision,
         appliedDefinition: { definition: operation.definition, catalog: null },
       });
       actual = (await exists(table.name))
-        ? await inspect(table.name, postTables)
+        ? await inspect(table.name, postTables, plan.version === 3 ? { version: 3 } : table.appliedDefinition?.catalog)
         : null;
       const receipt =
         actual === null
@@ -193,6 +200,7 @@ export async function reconcile(
         const target = managed.find((t) => t.id === dependency.tableId);
         if (
           target?.appliedRevision !== dependency.appliedRevision ||
+          (dependency.appliedPhysicalRevision !== undefined && (target?.appliedPhysicalRevision ?? target?.appliedRevision) !== dependency.appliedPhysicalRevision) ||
           canonical(target?.appliedDefinition?.catalog) !==
             canonical(dependency.catalog) ||
           canonical(target?.appliedDefinition?.definition) !==
@@ -201,6 +209,7 @@ export async function reconcile(
             await inspect(
               dependency.definition.name,
               classification === 'POST_STATE' ? postTables : managed,
+              dependency.catalog,
             ),
           ) !== canonical(dependency.catalog)
         )
@@ -208,7 +217,7 @@ export async function reconcile(
       }
       if (classification !== 'POST_STATE') {
         const preActual = (await exists(table.name))
-          ? await inspect(table.name, managed)
+          ? await inspect(table.name, managed, table.appliedDefinition?.catalog)
           : null;
         classification =
           canonical(preActual) ===
@@ -239,7 +248,8 @@ export async function reconcile(
             await tx
               .update(schemaTables)
               .set({
-                appliedRevision: operation.draftRevision,
+                appliedRevision: plan.evolution?.contractChange === false ? table.appliedRevision : operation.draftRevision,
+                appliedPhysicalRevision: operation.draftRevision,
                 appliedDefinition: {
                   definition: operation.definition,
                   catalog: actual,

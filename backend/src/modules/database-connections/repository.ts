@@ -72,6 +72,7 @@ export class PostgresConnectionRepository implements ConnectionRepository {
         managedTables: tables.map((t) => ({
           id: t.id,
           appliedRevision: t.appliedRevision,
+          appliedPhysicalRevision: t.appliedPhysicalRevision,
           appliedDefinition: t.appliedDefinition,
         })),
         schemas: tables
@@ -90,7 +91,7 @@ export class PostgresConnectionRepository implements ConnectionRepository {
       },
       fingerprint: JSON.stringify({
         tables: tables
-          .map((t) => [t.id, t.draftRevision, t.appliedRevision])
+          .map((t) => [t.id, t.draftRevision, t.appliedRevision, t.appliedPhysicalRevision])
           .sort(),
         auth: auth ? [auth.id, auth.revision, auth.provisioningStatus] : null,
       }),
@@ -119,7 +120,7 @@ export class PostgresConnectionRepository implements ConnectionRepository {
         .where(eq(projectAuthConfigs.projectId, record.projectId));
       const current = JSON.stringify({
         tables: tables
-          .map((t) => [t.id, t.draftRevision, t.appliedRevision])
+          .map((t) => [t.id, t.draftRevision, t.appliedRevision, t.appliedPhysicalRevision])
           .sort(),
         auth: auth ? [auth.id, auth.revision, auth.provisioningStatus] : null,
       });

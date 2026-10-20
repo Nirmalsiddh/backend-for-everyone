@@ -1,10 +1,12 @@
 'use client';
+import { validateIndexForms } from '@/lib/schema-indexes';
+import { Indexes } from './indexes';
 import { MutationBoundary } from '@/components/ui';
 import { fieldTypes } from '../../../../shared/public-contracts.js';
 import { useEffect, useState } from 'react';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { api } from '@/lib/api';
-import type { Table } from '@/lib/contracts';
+import type { Table, ManagedIndex } from '@/lib/contracts';
 import {
   emptyField,
   tasksPreset,
@@ -59,12 +61,14 @@ export function SchemaEditor({
     sql: string;
     planHash: string;
     draftRevision: number;
+    actions?: { kind: string; field?: string; fields?: string[] }[];
     relationships?: { field: string; target: string; nullable: boolean }[];
   } | null>(null);
-  const f = useForm<{ name: string; fields: FieldForm[] }>({
+  const f = useForm<{ name: string; fields: FieldForm[]; indexes: ManagedIndex[] }>({
     defaultValues: {
       name: table?.name ?? '',
       fields: table?.fields.map(toForm) ?? [],
+      indexes: table?.indexes ?? [],
     },
   });
   const rows = useFieldArray({
@@ -75,27 +79,29 @@ export function SchemaEditor({
   const values = f.watch();
   useEffect(() => {
     if (table && !f.formState.isDirty && !action.busy) {
-      f.reset({ name: table.name, fields: table.fields.map(toForm) });
+      f.reset({ name: table.name, fields: table.fields.map(toForm), indexes: table.indexes ?? [] });
       setSavedRevision(table.draftRevision);
     }
   }, [table?.draftRevision, action.busy, f.formState.isDirty]);
   const applied = new Set(
-    table?.appliedDefinition?.definition.fields.map((x) => x.id),
+    table?.appliedDefinition?.definition.fields.flatMap((x) => x.id ? [x.id] : []),
   );
-  async function saveValues(v: { name: string; fields: FieldForm[] }) {
+  async function saveValues(v: { name: string; fields: FieldForm[]; indexes: ManagedIndex[] }) {
     return action.run(
       async () => {
         const fields = validateFields(v.fields);
+        validateIndexForms(v.indexes, fields);
         const t = await api<Table>(
           table ? path + '/draft' : path,
           table ? 'PUT' : 'POST',
           {
             name: v.name,
             fields,
+            indexes: v.indexes.map(({ specificationVersion: _, ...index }) => index),
             ...(table ? { expectedDraftRevision: savedRevision } : {}),
           },
         );
-        f.reset({ name: t.name, fields: t.fields.map(toForm) });
+        f.reset({ name: t.name, fields: t.fields.map(toForm), indexes: t.indexes ?? [] });
         setSavedRevision(t.draftRevision);
         setPreview(null);
         return t;
@@ -180,9 +186,7 @@ export function SchemaEditor({
           {ownershipWarning}
         </p>
         <p className="warning">
-          After first apply, existing fields cannot be renamed, dropped, or
-          changed in this MVP. Only new nullable fields without defaults or
-          uniqueness may be added. For owner-protected records, add a UUID
+          Applied fields cannot be renamed, dropped, or have their types changed. You may add nullable fields without defaults, add a managed index, or make one existing field required per Apply. For owner-protected records, add a UUID
           ownership field such as owner_id before applying; existing rows will
           not acquire an owner automatically.
         </p>
@@ -194,7 +198,7 @@ export function SchemaEditor({
           const locked = !!row.id && applied.has(row.id);
           const value = values.fields[i];
           return (
-            <fieldset key={row.formKey} disabled={locked || action.busy}>
+            <div key={row.formKey}><fieldset disabled={locked || action.busy}>
               <legend>
                 Field {i + 1}
                 {locked ? ' · applied, read-only' : ''}
@@ -408,6 +412,11 @@ export function SchemaEditor({
                 Remove field
               </button>
             </fieldset>
+            {locked && table?.appliedDefinition?.definition.fields.find((field) => field.id === row.id)?.nullable && <label>
+              <input type="checkbox" checked={!value.nullable} disabled={action.busy} onChange={(event) => f.setValue(`fields.${i}.nullable`, !event.target.checked, { shouldDirty: true })} />
+              Make {value.name} required · All existing rows must already have a value.
+            </label>}
+            </div>
           );
         })}
         <button
@@ -418,6 +427,10 @@ export function SchemaEditor({
         >
           Add field
         </button>
+        <Indexes indexes={values.indexes} fields={table?.fields ?? []} applied={table?.appliedDefinition?.definition.indexes ?? []}
+          appliedFieldIds={table?.appliedDefinition ? applied : undefined} busy={action.busy}
+          attention={['failed', 'outcome_unknown'].includes(table?.applyStatus?.status ?? '')}
+          onChange={(indexes) => f.setValue('indexes', indexes, { shouldDirty: true })} />
         <button disabled={action.busy}>
           {table ? 'Save draft' : 'Create table draft'}
         </button>
@@ -457,7 +470,7 @@ export function SchemaEditor({
                 </>
               )}
               Saved draft revision {table.draftRevision} · Applied revision{' '}
-              {table.appliedRevision ?? 'never'}
+              {table.appliedRevision ?? 'never'} · Physical revision {table.appliedPhysicalRevision ?? table.appliedRevision ?? 'never'}
             </p>
           </details>
           <p>
@@ -465,8 +478,7 @@ export function SchemaEditor({
             {table.appliedRevision === null ? 'Not applied' : 'Applied'}
           </p>
           <p>
-            After apply, only new nullable fields without defaults or uniqueness
-            are supported.
+            Apply one index or requiredness change at a time. Existing nullable column/reference additions remain supported.
           </p>
           <button
             disabled={action.busy || f.formState.isDirty}
@@ -485,14 +497,17 @@ export function SchemaEditor({
               <h2>
                 {table.appliedRevision === null
                   ? 'Create table'
-                  : 'Add safe columns to'}{' '}
+                  : preview.actions?.length ? 'Evolve' : 'Add safe columns to'}{' '}
                 {table.name}
               </h2>
+              {preview.actions?.map((operation, index) => <p key={index}>
+                {operation.kind === 'set_not_null' ? `Make field required: ${operation.field}. All existing rows must already have a value.` : `${operation.kind === 'create_unique_index' ? 'Create unique index' : 'Create normal index'}: ${operation.fields?.join(', ')}.${operation.kind === 'create_unique_index' ? ' Existing duplicate values will block Apply.' : ''}`}
+              </p>)}
               <ul>
                 {table.fields
                   .filter(
                     (field) =>
-                      table.appliedRevision === null || !applied.has(field.id),
+                      table.appliedRevision === null || (!field.id || !applied.has(field.id)),
                   )
                   .map((field) => (
                     <li key={field.id}>
@@ -540,7 +555,7 @@ export function SchemaEditor({
                 onClick={() => {
                   if (
                     confirm(
-                      'This changes your connected database. Existing fields cannot be changed afterward in this version.',
+                      'Reads and writes may be temporarily unavailable while this change runs. ' + (preview.actions?.some((operation) => operation.kind === 'create_unique_index') ? 'Existing duplicate values will block Apply.' : preview.actions?.some((operation) => operation.kind === 'set_not_null') ? 'All existing rows must already have a value.' : 'Review the preview before Apply.'),
                     )
                   )
                     void action.run(

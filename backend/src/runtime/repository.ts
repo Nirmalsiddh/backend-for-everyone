@@ -70,6 +70,7 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
         const related = targetIds.length ? await tx.select({
           tableId: schemaTables.id,
           revision: schemaTables.appliedRevision,
+          physicalRevision: schemaTables.appliedPhysicalRevision,
           applied: schemaTables.appliedDefinition,
           endpoint: endpoints,
         }).from(schemaTables).innerJoin(endpoints, and(
@@ -90,6 +91,7 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
           .select({
             id: schemaTables.id,
             appliedRevision: schemaTables.appliedRevision,
+            appliedPhysicalRevision: schemaTables.appliedPhysicalRevision,
             appliedDefinition: schemaTables.appliedDefinition,
           })
           .from(schemaTables)

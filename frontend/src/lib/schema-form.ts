@@ -144,7 +144,7 @@ export function validateFields(fields: FieldForm[]) {
 }
 
 export const ownershipWarning =
-  'Add the ownership UUID field before the first Apply. Existing fields cannot be changed or removed after the first apply in this version.';
+  'Add the ownership UUID field before the first Apply. Applied fields cannot be renamed, dropped, or have their types changed.';
 export function tasksPreset(kind: 'owned' | 'server') {
   return {
     name: 'tasks',

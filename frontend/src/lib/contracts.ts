@@ -26,7 +26,10 @@ export type Field = {
     | { kind: 'current_timestamp' }
     | null;
 };
+export type ManagedIndex = { id?: string; specificationVersion?: 1; fieldIds: string[]; unique: boolean };
 export type Table = {
+  appliedPhysicalRevision?: number | null;
+  indexes?: ManagedIndex[];
   id: string;
   name: string;
   draftRevision: number;
@@ -38,7 +41,7 @@ export type Table = {
     errorCode: string | null;
     completedAt: string | null;
   } | null;
-  appliedDefinition: { definition: { name: string; fields: Field[] } } | null;
+  appliedDefinition: { definition: { name: string; fields: Field[]; indexes?: ManagedIndex[] } } | null;
 };
 export { operations };
 export type Operation = (typeof operations)[number];

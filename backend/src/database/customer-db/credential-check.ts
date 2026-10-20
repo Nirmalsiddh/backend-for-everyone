@@ -6,6 +6,7 @@ import {
   customerConnectionOptions,
 } from '../../security/customer-destination.js';
 import { boundedClient } from './admission.js';
+import { readCatalog } from './index-catalog.js';
 import { catalog } from './catalog.js';
 import {
   canonical,
@@ -118,11 +119,12 @@ export async function inspectCredentials(
     for (const table of requirements.schemas)
       if (
         canonical(
-          await catalog(
+          await readCatalog(
             client,
             config.schema,
             table.name,
             requirements.managedTables,
+            table.catalog,
           ),
         ) !== canonical(table.catalog)
       )

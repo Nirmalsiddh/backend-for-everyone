@@ -4,6 +4,8 @@ const tableKeys = [
   'name',
   'draftRevision',
   'appliedRevision',
+  'appliedPhysicalRevision',
+  'indexes',
   'fields',
   'appliedDefinition',
   'applyStatus',
@@ -37,16 +39,18 @@ function fieldDto(value: unknown) {
 }
 export function tableDto(value: unknown): unknown {
   const row = pick(value, tableKeys);
+  if (row.indexes) row.indexes = (row.indexes as unknown[]).map((index) => pick(index, ['id', 'specificationVersion', 'fieldIds', 'unique']));
   row.fields = (row.fields as unknown[]).map((f) => fieldDto(f));
   if (row.appliedDefinition) {
     const d = (
       row.appliedDefinition as {
-        definition: { name: string; fields: unknown[] };
+        definition: { name: string; fields: unknown[]; indexes?: unknown[] };
       }
     ).definition;
     row.appliedDefinition = {
       definition: {
         name: d.name,
+        ...(d.indexes ? { indexes: d.indexes.map((index) => pick(index, ['id', 'specificationVersion', 'fieldIds', 'unique'])) } : {}),
         fields: d.fields.map((f) => fieldDto(f)),
       },
     };

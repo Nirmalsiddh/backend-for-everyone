@@ -164,6 +164,7 @@ export const schemaTables = pgTable(
     name: varchar('name', { length: 63 }).notNull(),
     draftRevision: integer('draft_revision').notNull().default(1),
     appliedRevision: integer('applied_revision'),
+    appliedPhysicalRevision: integer('applied_physical_revision'),
     appliedDefinition: jsonb('applied_definition').$type<AppliedDefinition>(),
     createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' })
       .notNull()
@@ -190,6 +191,7 @@ export const schemaTables = pgTable(
       'schema_tables_revisions_valid',
       sql`${table.draftRevision} > 0 AND (${table.appliedRevision} IS NULL OR (${table.appliedRevision} > 0 AND ${table.appliedRevision} <= ${table.draftRevision}))`,
     ),
+    check('schema_tables_physical_revision_valid', sql`(${table.appliedPhysicalRevision} IS NULL AND ${table.appliedRevision} IS NULL) OR (${table.appliedPhysicalRevision} IS NOT NULL AND ${table.appliedRevision} IS NOT NULL AND ${table.appliedPhysicalRevision} >= ${table.appliedRevision} AND ${table.appliedPhysicalRevision} <= ${table.draftRevision})`),
     check(
       'schema_tables_applied_pair',
       sql`(${table.appliedRevision} IS NULL) = (${table.appliedDefinition} IS NULL)`,
@@ -244,6 +246,17 @@ export const schemaFields = pgTable(
   ],
 );
 
+export const schemaIndexes = pgTable('schema_indexes', {
+  id: uuid('id').primaryKey(),
+  tableId: uuid('table_id').notNull().references(() => schemaTables.id, { onDelete: 'cascade' }),
+  specificationVersion: integer('specification_version').$type<1>().notNull().default(1),
+  fieldIds: jsonb('field_ids').$type<string[]>().notNull(),
+  unique: booleanColumn('is_unique').notNull(),
+  createdAt: timestamp('created_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+  updatedAt: timestamp('updated_at', { withTimezone: true, mode: 'date' }).notNull().defaultNow(),
+}, (table) => [check('schema_indexes_specification_valid', sql`${table.specificationVersion} = 1`),
+  check('schema_indexes_fields_valid', sql`jsonb_typeof(${table.fieldIds}) = 'array' AND jsonb_array_length(${table.fieldIds}) BETWEEN 1 AND 4`)]);
+
 export const schemaMigrations = pgTable(
   'schema_migrations',
   {
@@ -259,7 +272,7 @@ export const schemaMigrations = pgTable(
     planContext: jsonb('plan_context').$type<{
       version: 2;
       dependencies: import('../../modules/schema-builder/types.js').RelationshipDependency[];
-    }>(),
+    } | import('../../modules/schema-builder/types.js').EvolutionContext>(),
     definition: jsonb('definition').$type<Definition>().notNull(),
     status: varchar('status', { length: 24 })
       .$type<MigrationStatus>()

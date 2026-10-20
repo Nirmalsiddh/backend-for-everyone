@@ -13,6 +13,7 @@ import {
   projects,
   databaseConnections,
   schemaTables,
+  schemaIndexes,
   apiKeys,
   workflowEndpoints,
 } from '../../src/database/platform-db/schema.js';
@@ -389,6 +390,20 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
       assert.equal(filtered.json().data.length, 1);
     },
   );
+  await t.test('normal user index preserves FK catalogs, applied contract, published parent workflow and include', async () => {
+    const logical = child.appliedRevision;
+    const docsBefore = (await app.inject({ url: base + '/openapi', headers: auth })).json();
+    const before = await call('GET', `/orders/${orderId!}?include=customer_id`);
+    const fields = child.fields.map(({ position: _, default: d, ...field }) => ({ ...field, ...(d ? { default: d } : {}) }));
+    await assert.rejects(repository.update(project.id, owner, child.id, child.draftRevision, { name: child.name, fields, indexes: [{ fieldIds: [child.fields[0]!.id], unique: false }] }));
+    child = await repository.update(project.id, owner, child.id, child.draftRevision, { name: child.name, fields, indexes: [{ fieldIds: [child.fields.find((field) => field.name === 'total')!.id], unique: false }] });
+    child = await apply(child);
+    assert.equal(child.appliedRevision, logical); assert.equal(child.appliedPhysicalRevision, child.draftRevision);
+    assert.deepEqual((await call('GET', `/orders/${orderId!}?include=customer_id`)).json(), before.json());
+    assert.deepEqual((await app.inject({ url: base + '/openapi', headers: auth })).json(), docsBefore);
+    assert.equal((await call('POST', '/parent-action', {})).statusCode, 204);
+    assert.equal((await db.select().from(schemaIndexes).where(eq(schemaIndexes.tableId, child.id))).length, 1);
+  });
   await t.test(
     'applied OpenAPI has UUID/public relationship descriptions without IDs',
     async () => {
@@ -499,14 +514,16 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
   });
   await t.test('expanded metadata fence fails closed after policy and suspension changes', async () => {
     const original = await deps.endpointRepository.get(project.id, owner, parent.id);
-    for (const change of ['target', 'parent', 'revision', 'targetRevision', 'relationship', 'suspension'] as const) {
+    for (const change of ['target', 'parent', 'revision', 'targetRevision', 'physical', 'targetPhysical', 'relationship', 'suspension'] as const) {
       const parentEndpoint = await deps.endpointRepository.get(project.id, owner, child.id);
       afterParent = async () => {
         if (change === 'target' || change === 'parent') await db.update(endpoints)
           .set({ policies: { get: { mode: 'authenticated' } } })
           .where(eq(endpoints.id, change === 'target' ? original.id : parentEndpoint.id));
-        if (change === 'revision') await db.update(schemaTables).set({ appliedRevision: child.appliedRevision! + 1, draftRevision: child.draftRevision + 1 }).where(eq(schemaTables.id, child.id));
-        if (change === 'targetRevision') await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision! + 1, draftRevision: parent.draftRevision + 1 }).where(eq(schemaTables.id, parent.id));
+        if (change === 'revision') await db.update(schemaTables).set({ appliedRevision: child.appliedRevision! + 1, appliedPhysicalRevision: child.appliedRevision! + 1, draftRevision: child.draftRevision + 1 }).where(eq(schemaTables.id, child.id));
+        if (change === 'targetRevision') await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision! + 1, appliedPhysicalRevision: parent.appliedRevision! + 1, draftRevision: parent.draftRevision + 1 }).where(eq(schemaTables.id, parent.id));
+        if (change === 'physical') await db.update(schemaTables).set({ appliedPhysicalRevision: child.appliedPhysicalRevision! + 1, draftRevision: child.draftRevision + 1 }).where(eq(schemaTables.id, child.id));
+        if (change === 'targetPhysical') await db.update(schemaTables).set({ appliedPhysicalRevision: parent.appliedPhysicalRevision! + 1, draftRevision: parent.draftRevision + 1 }).where(eq(schemaTables.id, parent.id));
         if (change === 'relationship') await db.update(schemaTables).set({ appliedDefinition: { ...child.appliedDefinition!, definition: { ...child.appliedDefinition!.definition, fields: child.appliedDefinition!.definition.fields.map(({ relationship: _, ...field }) => field) } } }).where(eq(schemaTables.id, child.id));
         if (change === 'suspension') await db.update(projects).set({ runtimeState: 'suspended' }).where(eq(projects.id, project.id));
       };
@@ -516,8 +533,8 @@ test('managed relationships: PostgreSQL enforcement, parent drift, workflow atom
       assert.ok(!result.body.includes('Example'));
       await db.update(endpoints).set({ policies: original.policies ?? {} }).where(eq(endpoints.id, original.id));
       await db.update(endpoints).set({ policies: parentEndpoint.policies ?? {} }).where(eq(endpoints.id, parentEndpoint.id));
-      await db.update(schemaTables).set({ appliedRevision: child.appliedRevision, draftRevision: child.draftRevision, appliedDefinition: child.appliedDefinition }).where(eq(schemaTables.id, child.id));
-      await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision, draftRevision: parent.draftRevision }).where(eq(schemaTables.id, parent.id));
+      await db.update(schemaTables).set({ appliedRevision: child.appliedRevision, appliedPhysicalRevision: child.appliedPhysicalRevision!, draftRevision: child.draftRevision, appliedDefinition: child.appliedDefinition }).where(eq(schemaTables.id, child.id));
+      await db.update(schemaTables).set({ appliedRevision: parent.appliedRevision, appliedPhysicalRevision: parent.appliedPhysicalRevision!, draftRevision: parent.draftRevision }).where(eq(schemaTables.id, parent.id));
       await db.update(projects).set({ runtimeState: 'active' }).where(eq(projects.id, project.id));
     }
   });

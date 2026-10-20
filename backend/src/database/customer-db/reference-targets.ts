@@ -1,6 +1,6 @@
 import { boundedClient } from './admission.js';
 import { customerConnectionOptions } from '../../security/customer-destination.js';
-import { catalog } from './catalog.js';
+import { readCatalog } from './index-catalog.js';
 import {
   canonical,
   quoteIdentifier,
@@ -46,7 +46,7 @@ export async function inspectReferenceTargets(
         `LOCK TABLE ONLY ${quoteIdentifier(d.schema)}.${quoteIdentifier(d.name)} IN ACCESS SHARE MODE`,
       );
       if (
-        canonical(await catalog(client, d.schema, d.name, tables)) !==
+        canonical(await readCatalog(client, d.schema, d.name, tables, table.appliedDefinition.catalog)) !==
         canonical(table.appliedDefinition.catalog)
       ) {
         if (ids)
