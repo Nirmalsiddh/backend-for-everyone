@@ -116,9 +116,11 @@ export class WorkflowEngine {
     path: string,
     body: unknown,
     query: Record<string, unknown>,
+    onTarget: (resource: string) => void = () => {},
   ): Promise<WorkflowResult | undefined> {
     const target = await this.repository.resolve(principal.projectId, path);
     if (!target) return undefined;
+    onTarget(target.endpoint.path);
     if (target.blocked) throw unavailable();
     const definition = target.version.definition;
     const isUser = 'kind' in principal && principal.kind === 'user';

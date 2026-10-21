@@ -7,6 +7,7 @@ import type { KeyScope } from '../modules/api-keys/types.js';
 export interface RuntimeIdentity { projectId: string; keyId: string; scope: KeyScope }
 export type RuntimePrincipal = RuntimeIdentity | UserPrincipal;
 export interface RuntimeTarget {
+  resourceName?: string;
   fingerprint?: string;
   relatedTargets?: Record<string, RuntimeTarget>;
   policies?: Partial<Record<Operation, OperationPolicy>>;

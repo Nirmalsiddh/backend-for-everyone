@@ -118,6 +118,7 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
         return {
           ...(fingerprint ? { fingerprint, relatedTargets } : {}),
           endpointId: row.endpoint.id,
+          resourceName: row.endpoint.resourceName,
           projectId: row.endpoint.projectId,
           enabledOperations: row.endpoint.enabledOperations,
           policies: row.endpoint.policies,

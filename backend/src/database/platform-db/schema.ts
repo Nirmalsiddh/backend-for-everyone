@@ -15,6 +15,8 @@ import type {
 } from '../../modules/schema-builder/types.js';
 import { sql } from 'drizzle-orm';
 import {
+  bigint,
+  smallint,
   boolean as booleanColumn,
   check,
   foreignKey,
@@ -496,3 +498,32 @@ export const workflowVersions = pgTable(
     ),
   ],
 );
+
+
+export const runtimeRequestEvents = pgTable('runtime_request_events', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  projectId: uuid('project_id').notNull().references(() => projects.id, { onDelete: 'cascade' }),
+  requestId: uuid('request_id').notNull(),
+  completedAt: timestamp('completed_at', { withTimezone: true, precision: 3, mode: 'date' }).notNull(),
+  eventVersion: smallint('event_version').notNull().default(1),
+  routeCategory: varchar('route_category', { length: 16 }).notNull(),
+  operation: varchar('operation', { length: 24 }),
+  resource: varchar('resource', { length: 100 }),
+  method: varchar('method', { length: 16 }).notNull(),
+  status: integer('status').notNull(),
+  errorCode: varchar('error_code', { length: 80 }),
+  durationUs: bigint('duration_us', { mode: 'number' }).notNull(),
+  responseBytes: bigint('response_bytes', { mode: 'number' }),
+  principalKind: varchar('principal_kind', { length: 16 }).notNull(),
+}, (table) => [
+  index('runtime_events_project_time').on(table.projectId, table.completedAt.desc(), table.id.desc()),
+  index('runtime_events_request').on(table.projectId, table.requestId),
+  index('runtime_events_cleanup').on(table.completedAt, table.id),
+  check('runtime_request_events_event_version_check', sql`${table.eventVersion} = 1`),
+  check('runtime_request_events_status_check', sql`${table.status} BETWEEN 100 AND 599`),
+  check('runtime_request_events_duration_us_check', sql`${table.durationUs} >= 0`),
+  check('runtime_request_events_response_bytes_check', sql`${table.responseBytes} >= 0`),
+  check('runtime_request_events_route_category_check', sql`${table.routeCategory} IN ('crud','auth','workflow','unresolved')`),
+  check('runtime_request_events_operation_check', sql`${table.operation} IN ('crud.list','crud.get','crud.create','crud.update','crud.delete','auth.signup','auth.login','auth.me','auth.logout','workflow.execute')`),
+  check('runtime_request_events_principal_kind_check', sql`${table.principalKind} IN ('project_key','app_user','anonymous')`),
+]);

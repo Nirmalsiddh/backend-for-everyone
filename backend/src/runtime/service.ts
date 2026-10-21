@@ -20,7 +20,7 @@ export class RuntimeService {
     return identity;
   }
   async execute(identity: RuntimePrincipal, resource: string, operation: Operation, id: string | undefined, body: unknown,
-    query: Record<string, unknown>, onTarget: (endpointId: string) => void = () => {}) {
+    query: Record<string, unknown>, onTarget: (endpointId: string, resource: string) => void = () => {}) {
     const includes = parseInclude(query);
     if (includes.length && !['get', 'list'].includes(operation)) throw invalidInclude();
     const ordinaryQuery = { ...query };
@@ -32,7 +32,7 @@ export class RuntimeService {
       if (includes.length) throw invalidInclude();
       throw notFound();
     }
-    onTarget(target.endpointId);
+    onTarget(target.endpointId, target.resourceName ?? target.applied?.definition.name ?? 'unresolved');
     if (target.blocked || !target.applied) throw unavailable();
     const definition = target.applied.definition;
     if (/^(platform_|internal_|pg_|schema_)/.test(definition.name)) throw notFound();

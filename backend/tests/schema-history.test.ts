@@ -33,3 +33,16 @@ test('actual v0.11 restored SDK snapshot retains public hash, table provenance a
   assert.equal(contract.hash, fixture.contractHash); assert.deepEqual(contract.tableRevisions, fixture.tableRevisions);
   assert.equal(createHash('sha256').update(render(contract)).digest('hex'), fixture.sourceHash);
 });
+
+test('actual tagged v0.12 v4 plans and SDK output remain frozen', async () => {
+  const { generatePlan } = await import('../src/modules/schema-builder/plan.js');
+  const { buildContract } = await import('../src/modules/typescript-client/contract.js');
+  const { render } = await import('../src/modules/typescript-client/render.js');
+  const { createHash } = await import('node:crypto');
+  const fixture = JSON.parse(await readFile(new URL('./fixtures/schema-history/v0.12.0-alpha.1.json', import.meta.url), 'utf8'));
+  assert.equal(fixture.commit,'7dcf6fd8116b1fd605aa530dfb40309572278dd7');
+  for (const item of fixture.fixtures) assert.equal(canonical(generatePlan(item.table,[])),canonical(item.plan),item.name);
+  const contract = buildContract(fixture.sdk.snapshot);
+  assert.equal(contract.hash,fixture.sdk.hash);
+  assert.equal(createHash('sha256').update(render(contract)).digest('hex'),fixture.sdk.sourceHash);
+});

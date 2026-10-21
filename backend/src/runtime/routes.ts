@@ -1,3 +1,4 @@
+import { buildEvent, type EventContext, type EventSink } from '../modules/observability/events.js';
 import { invalidInclude, parseInclude } from './include.js';
 import { DestinationError } from '../security/customer-destination.js';
 import type { WorkflowEngine } from '../modules/workflows/engine.js';
@@ -15,7 +16,8 @@ export async function runtimeRoutes(
   options: {
     service: RuntimeService;
     allowedOrigins: string[];
-    admission?: (slug: string) => Promise<void>;
+    admission?: (slug: string, resolved?: (projectId: string) => void) => Promise<void>;
+    telemetry?: EventSink;
     auth?: AuthService;
     workflows?: WorkflowEngine;
   },
@@ -30,6 +32,7 @@ export async function runtimeRoutes(
     errorCode?: string;
   };
   const contexts = new WeakMap<FastifyRequest, Context>();
+  const events = new WeakMap<FastifyRequest, EventContext>();
   app.setErrorHandler<FastifyError>((error, req, reply) => {
     const known =
       error instanceof RuntimeError || error instanceof DestinationError;
@@ -45,6 +48,8 @@ export async function runtimeRoutes(
         : 'INVALID_REQUEST';
     const context = contexts.get(req);
     if (context) context.errorCode = code;
+    const event = events.get(req);
+    if (event) event.errorCode = code;
     if (status === 429) reply.header('retry-after', '1');
     if (error instanceof AuthRateLimitError)
       reply.header('retry-after', String(error.retryAfter));
@@ -63,6 +68,15 @@ export async function runtimeRoutes(
   });
   app.addHook('onRequest', async (req, reply) => {
     contexts.set(req, {});
+    events.set(req, { started: process.hrtime.bigint(), recorded: false, category: 'unresolved', operation: null, resource: null, principal: 'anonymous', errorCode: null, responseBytes: null });
+    const event = events.get(req)!;
+    const template = req.routeOptions.url ?? '';
+    const authAction = /\/auth\/(signup|login|me|logout)$/.exec(template)?.[1];
+    if (authAction) { event.category = 'auth'; event.operation = `auth.${authAction}` as EventContext['operation']; }
+    else if (template.endsWith('/:resource') || template.endsWith('/:resource/:id')) {
+      const operation = ['GET','HEAD'].includes(req.method) ? template.endsWith('/:id') ? 'get' : 'list' : req.method === 'POST' ? 'create' : req.method === 'PATCH' ? 'update' : req.method === 'DELETE' ? 'delete' : null;
+      if (operation && !(operation === 'create' && options.workflows)) { event.category = 'crud'; event.operation = `crud.${operation}`; }
+    }
     const includeKeys = [...new URL(req.raw.url ?? '/', 'http://runtime').searchParams.keys()]
       .filter((key) => key === 'include' || /^include[.\[\]]/.test(key));
     if (includeKeys.length) {
@@ -93,6 +107,13 @@ export async function runtimeRoutes(
   });
   app.addHook('onResponse', async (req, reply) => {
     const context = contexts.get(req);
+    const eventContext = events.get(req);
+    if (eventContext && options.telemetry) {
+      try {
+        const event = buildEvent(eventContext, req.id, req.method, reply.statusCode);
+        if (event) options.telemetry.enqueue(event);
+      } catch { /* Telemetry cannot replace a runtime result. */ }
+    }
     req.log.info(
       {
         requestId: req.id,
@@ -122,8 +143,13 @@ export async function runtimeRoutes(
   app.addHook('onRequest', async (req) => {
     if (req.method !== 'OPTIONS') {
       const slug = (req.params as { projectSlug?: string }).projectSlug;
-      if (slug) await options.admission?.(slug);
+      if (slug) await options.admission?.(slug, (projectId) => { events.get(req)!.projectId = projectId; });
     }
+  });
+  app.addHook('onSend', async (req, reply, payload) => {
+    const event = events.get(req);
+    if (event) event.responseBytes = req.method === 'HEAD' || [204,304].includes(reply.statusCode) ? 0 : typeof payload === 'string' ? Buffer.byteLength(payload) : Buffer.isBuffer(payload) ? payload.length : null;
+    return payload;
   });
   app.addHook('preSerialization', async (_req, _reply, payload) => {
     if (
@@ -156,6 +182,7 @@ export async function runtimeRoutes(
         url: `/:projectSlug/auth/${action}`,
         onRequest: async (req) => {
           contexts.get(req)!.action = action;
+          const event = events.get(req)!; event.category = 'auth'; event.operation = `auth.${action}`;
         },
         handler: async (req, reply) => {
           if (
@@ -169,7 +196,11 @@ export async function runtimeRoutes(
               .code(201)
               .send(await auth.signup(slug, req.body, req.ip));
           if (action === 'login') return auth.login(slug, req.body, req.ip);
-          if (action === 'me') return auth.me(slug, req.headers.authorization);
+          if (action === 'me') {
+            const result = await auth.me(slug, req.headers.authorization);
+            events.get(req)!.principal = 'app_user';
+            return result;
+          }
           await auth.logout(slug, req.headers.authorization);
           return reply.code(204).send();
         },
@@ -202,10 +233,14 @@ export async function runtimeRoutes(
       onRequest: async (req) => {
         const context = contexts.get(req)!;
         context.operation = route.operation;
+        const event = events.get(req)!;
+        if (!(route.operation === 'create' && options.workflows)) { event.category = 'crud'; event.operation = `crud.${route.operation}`; }
         context.identity = await options.service.authenticate(
           req.params.projectSlug,
           req.headers.authorization,
         );
+        event.projectId = context.identity.projectId;
+        event.principal = 'kind' in context.identity && context.identity.kind === 'user' ? 'app_user' : 'project_key';
       },
       handler: async (req, reply) => {
         const context = contexts.get(req)!;
@@ -215,6 +250,7 @@ export async function runtimeRoutes(
             req.params.resource,
             req.body,
             req.query,
+            (resource) => { const event = events.get(req)!; event.category = 'workflow'; event.operation = 'workflow.execute'; event.resource = resource; },
           );
           if (result) {
             const { body: responseBody, ...metadata } = result;
@@ -226,6 +262,8 @@ export async function runtimeRoutes(
               .send(JSON.stringify(responseBody));
           }
         }
+        const event = events.get(req)!;
+        event.category = 'crud'; event.operation = `crud.${route.operation}`;
         const result = await options.service.execute(
           context.identity!,
           req.params.resource,
@@ -233,7 +271,8 @@ export async function runtimeRoutes(
           req.params.id,
           req.body,
           req.query,
-          (endpointId) => {
+          (endpointId, resource) => {
+            events.get(req)!.resource = resource;
             context.endpointId = endpointId;
           },
         );
@@ -253,6 +292,8 @@ export async function runtimeRoutes(
     });
   app.setNotFoundHandler((req, reply) => {
     if (Object.keys(req.query as Record<string, unknown>).some((key) => key === 'include' || /^include[.\[\]]/.test(key))) throw invalidInclude();
+    const event = events.get(req);
+    if (event) event.errorCode = 'NOT_FOUND';
     return reply
       .code(404)
       .send({

@@ -1,0 +1,583 @@
+{
+  "tag": "v0.12.0-alpha.1",
+  "commit": "7dcf6fd8116b1fd605aa530dfb40309572278dd7",
+  "fixtures": [
+    {
+      "name": "default_change",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": {
+              "kind": "literal",
+              "value": 7
+            }
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "plan": {
+        "version": 4,
+        "tableId": "11111111-1111-4111-8111-111111111111",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "revision": 2,
+        "evolution": {
+          "version": 4,
+          "dependencies": [],
+          "actions": [],
+          "contractChange": true,
+          "before": {
+            "definition": {
+              "schema": "history",
+              "name": "records",
+              "fields": [
+                {
+                  "id": "44444444-4444-4444-8444-444444444444",
+                  "name": "value_key",
+                  "position": 0,
+                  "type": "integer",
+                  "options": {},
+                  "nullable": true,
+                  "unique": false,
+                  "default": null
+                }
+              ]
+            },
+            "catalog": {}
+          },
+          "appliedRevision": 1,
+          "appliedPhysicalRevision": 1,
+          "bundle": {
+            "fieldId": "44444444-4444-4444-8444-444444444444",
+            "addition": false,
+            "enforceRequired": false,
+            "defaultChanged": true
+          }
+        },
+        "definition": {
+          "schema": "history",
+          "name": "records",
+          "fields": [
+            {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "name": "value_key",
+              "position": 0,
+              "type": "integer",
+              "options": {},
+              "nullable": true,
+              "unique": false,
+              "default": {
+                "kind": "literal",
+                "value": 7
+              }
+            }
+          ],
+          "indexes": []
+        },
+        "statements": [],
+        "operation": "evolve_table",
+        "hash": "ab21be1026ca0262b45d281af3fdf463c1d09e88e8425aaea2d85c20e54c4ae7",
+        "managedTables": [],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "required_fill",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": false,
+            "unique": false,
+            "default": null,
+            "backfillIntent": {
+              "kind": "literal",
+              "value": 0
+            }
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "plan": {
+        "version": 4,
+        "tableId": "11111111-1111-4111-8111-111111111111",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "revision": 2,
+        "evolution": {
+          "version": 4,
+          "dependencies": [],
+          "actions": [],
+          "contractChange": true,
+          "before": {
+            "definition": {
+              "schema": "history",
+              "name": "records",
+              "fields": [
+                {
+                  "id": "44444444-4444-4444-8444-444444444444",
+                  "name": "value_key",
+                  "position": 0,
+                  "type": "integer",
+                  "options": {},
+                  "nullable": true,
+                  "unique": false,
+                  "default": null
+                }
+              ]
+            },
+            "catalog": {}
+          },
+          "appliedRevision": 1,
+          "appliedPhysicalRevision": 1,
+          "bundle": {
+            "fieldId": "44444444-4444-4444-8444-444444444444",
+            "addition": false,
+            "enforceRequired": true,
+            "defaultChanged": false,
+            "fill": {
+              "kind": "literal",
+              "value": 0
+            }
+          }
+        },
+        "definition": {
+          "schema": "history",
+          "name": "records",
+          "fields": [
+            {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "name": "value_key",
+              "position": 0,
+              "type": "integer",
+              "options": {},
+              "nullable": false,
+              "unique": false,
+              "default": null
+            }
+          ],
+          "indexes": []
+        },
+        "statements": [],
+        "operation": "evolve_table",
+        "hash": "400b3a424ecb29279338331d93c8e2a095f2508715125fbcc29289f5d7f80256",
+        "managedTables": [],
+        "dependencies": []
+      }
+    },
+    {
+      "name": "required_add",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          },
+          {
+            "id": "99999999-9999-4999-8999-999999999999",
+            "name": "new_value",
+            "position": 1,
+            "type": "integer",
+            "options": {},
+            "nullable": false,
+            "unique": false,
+            "default": {
+              "kind": "literal",
+              "value": 8
+            },
+            "backfillIntent": {
+              "kind": "literal",
+              "value": 3
+            }
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "plan": {
+        "version": 4,
+        "tableId": "11111111-1111-4111-8111-111111111111",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "revision": 2,
+        "evolution": {
+          "version": 4,
+          "dependencies": [],
+          "actions": [],
+          "contractChange": true,
+          "before": {
+            "definition": {
+              "schema": "history",
+              "name": "records",
+              "fields": [
+                {
+                  "id": "44444444-4444-4444-8444-444444444444",
+                  "name": "value_key",
+                  "position": 0,
+                  "type": "integer",
+                  "options": {},
+                  "nullable": true,
+                  "unique": false,
+                  "default": null
+                }
+              ]
+            },
+            "catalog": {}
+          },
+          "appliedRevision": 1,
+          "appliedPhysicalRevision": 1,
+          "bundle": {
+            "fieldId": "99999999-9999-4999-8999-999999999999",
+            "addition": true,
+            "enforceRequired": true,
+            "defaultChanged": true,
+            "fill": {
+              "kind": "literal",
+              "value": 3
+            }
+          }
+        },
+        "definition": {
+          "schema": "history",
+          "name": "records",
+          "fields": [
+            {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "name": "value_key",
+              "position": 0,
+              "type": "integer",
+              "options": {},
+              "nullable": true,
+              "unique": false,
+              "default": null
+            },
+            {
+              "id": "99999999-9999-4999-8999-999999999999",
+              "name": "new_value",
+              "position": 1,
+              "type": "integer",
+              "options": {},
+              "nullable": false,
+              "unique": false,
+              "default": {
+                "kind": "literal",
+                "value": 8
+              }
+            }
+          ],
+          "indexes": []
+        },
+        "statements": [],
+        "operation": "evolve_table",
+        "hash": "d051d32d565054f05b2b56a8ce2addb7b2b9822fb250cfecd6f4b9e64fa36aa5",
+        "managedTables": [],
+        "dependencies": []
+      }
+    }
+  ],
+  "sdk": {
+    "snapshot": {
+      "project": {
+        "slug": "docs-project"
+      },
+      "blocked": false,
+      "resources": [
+        {
+          "name": "tasks",
+          "fields": [
+            {
+              "id": "internal-field-title",
+              "name": "title",
+              "type": "text",
+              "nullable": false,
+              "unique": false,
+              "default": null,
+              "options": {},
+              "position": 0
+            },
+            {
+              "id": "internal-field-done",
+              "name": "done",
+              "type": "boolean",
+              "nullable": false,
+              "unique": false,
+              "default": {
+                "kind": "literal",
+                "value": false
+              },
+              "options": {},
+              "position": 0
+            },
+            {
+              "id": "internal-field-owner_id",
+              "name": "owner_id",
+              "type": "uuid",
+              "nullable": false,
+              "unique": false,
+              "default": null,
+              "options": {},
+              "position": 0
+            }
+          ],
+          "operations": [
+            "list",
+            "get",
+            "create",
+            "update",
+            "delete"
+          ],
+          "policies": {
+            "list": {
+              "mode": "owner",
+              "ownerFieldId": "internal-field-owner_id",
+              "allowAdmin": false
+            },
+            "get": {
+              "mode": "owner",
+              "ownerFieldId": "internal-field-owner_id",
+              "allowAdmin": false
+            },
+            "create": {
+              "mode": "owner",
+              "ownerFieldId": "internal-field-owner_id",
+              "allowAdmin": false
+            },
+            "update": {
+              "mode": "owner",
+              "ownerFieldId": "internal-field-owner_id",
+              "allowAdmin": false
+            },
+            "delete": {
+              "mode": "owner",
+              "ownerFieldId": "internal-field-owner_id",
+              "allowAdmin": false
+            }
+          }
+        }
+      ],
+      "auth": {
+        "enabled": true,
+        "signupEnabled": true,
+        "provisioningStatus": "ready",
+        "sessionLifetimeSeconds": 86400
+      },
+      "tables": [
+        {
+          "id": "internal-table",
+          "appliedRevision": 1,
+          "applied": true,
+          "name": "tasks",
+          "fields": [
+            {
+              "id": "internal-field-title",
+              "name": "title",
+              "type": "text",
+              "nullable": false,
+              "unique": false,
+              "default": null,
+              "options": {},
+              "position": 0
+            },
+            {
+              "id": "internal-field-done",
+              "name": "done",
+              "type": "boolean",
+              "nullable": false,
+              "unique": false,
+              "default": {
+                "kind": "literal",
+                "value": false
+              },
+              "options": {},
+              "position": 0
+            },
+            {
+              "id": "internal-field-owner_id",
+              "name": "owner_id",
+              "type": "uuid",
+              "nullable": false,
+              "unique": false,
+              "default": null,
+              "options": {},
+              "position": 0
+            }
+          ]
+        }
+      ],
+      "workflows": [
+        {
+          "path": "place-order",
+          "dependencies": [
+            {
+              "tableId": "internal-table",
+              "appliedRevision": 1
+            }
+          ],
+          "definition": {
+            "input": {
+              "accepted": {
+                "type": "boolean",
+                "required": true
+              }
+            },
+            "auth": "authenticated",
+            "steps": [
+              {
+                "id": "internal-step",
+                "name": "condition",
+                "type": "condition",
+                "operator": "equals",
+                "left": {
+                  "kind": "reference",
+                  "source": "request",
+                  "path": [
+                    "body",
+                    "accepted"
+                  ]
+                },
+                "right": {
+                  "kind": "literal",
+                  "value": true
+                },
+                "then": [
+                  {
+                    "id": "success-step",
+                    "name": "OK",
+                    "type": "response",
+                    "status": 201,
+                    "body": {
+                      "kind": "object",
+                      "fields": {
+                        "accepted": {
+                          "kind": "reference",
+                          "source": "request",
+                          "path": [
+                            "body",
+                            "accepted"
+                          ]
+                        }
+                      }
+                    }
+                  }
+                ],
+                "else": [
+                  {
+                    "id": "rejection-step",
+                    "name": "Rejected",
+                    "type": "response",
+                    "status": 409,
+                    "body": {
+                      "kind": "literal",
+                      "value": {
+                        "reason": "literal-secret-sentinel"
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "hash": "f664ad4e0b687b0e0ecaabb90b822cfaff1970f36bf3f780527c85477724f822",
+    "sourceHash": "94518a25ac428a85d0d605c8fb67c7c04bd826d14ee09ece355fb59216b27b8c"
+  }
+}

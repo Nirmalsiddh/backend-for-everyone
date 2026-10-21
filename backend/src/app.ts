@@ -1,3 +1,6 @@
+import type { EventSink } from './modules/observability/events.js';
+import { observabilityRoutes } from './modules/observability/routes.js';
+import type { ObservabilityRepository } from './modules/observability/queries.js';
 import { typeScriptClientRoutes } from './modules/typescript-client/routes.js';
 import { TypeScriptClientService } from './modules/typescript-client/service.js';
 import { customerAdmission } from './database/customer-db/admission.js';
@@ -76,7 +79,9 @@ export function buildApp(options: {
   logger?: boolean;
   readiness?: () => Promise<void>;
   acquireSetupLease?: (projectId: string) => Promise<() => Promise<void>>;
-  runtimeAdmission?: (slug: string) => Promise<void>;
+  runtimeAdmission?: (slug: string, resolved?: (projectId: string) => void) => Promise<void>;
+  telemetry?: EventSink;
+  observabilityRepository?: ObservabilityRepository;
   docsRepository?: DocsRepository;
   connectionRepository?: ConnectionRepository;
   connectionTester?: ConnectionTester;
@@ -372,6 +377,7 @@ export function buildApp(options: {
         reply.header('Cache-Control', 'no-store');
       });
       internal.addHook('onRequest', platformSessionAuth(platformAuth));
+      if (options.observabilityRepository) await internal.register(observabilityRoutes, { repository: options.observabilityRepository });
       if (options.docsRepository)
         await internal.register(docsRoutes, {
           service: new DocsService(
@@ -428,6 +434,7 @@ export function buildApp(options: {
   if (options.runtimeRepository)
     app.register(runtimeRoutes, {
       prefix: '/api',
+      ...(options.telemetry ? { telemetry: options.telemetry } : {}),
       allowedOrigins: options.env.runtimeAllowedOrigins,
       ...(options.runtimeAdmission
         ? { admission: options.runtimeAdmission }

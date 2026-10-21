@@ -18,6 +18,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
           ['docs', 'Docs'],
           ['playground', 'Playground'],
           ['workflows', 'Workflows'],
+          ['observability', 'Observability'],
         ].map(([path, label]) => (
           <Link key={path} href={`/projects/${id}${path ? '/' + path : ''}`}>
             {label}

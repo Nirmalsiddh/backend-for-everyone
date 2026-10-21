@@ -38,13 +38,14 @@ export class RuntimeLimiter {
 }
 export function runtimeAdmission(db: PlatformDatabase) {
   const limiter = new RuntimeLimiter();
-  return async (slug: string) => {
+  return async (slug: string, resolved?: (projectId: string) => void) => {
     const [project] = await db
       .select({ id: projects.id, runtimeState: projects.runtimeState })
       .from(projects)
       .where(eq(projects.slug, slug))
       .limit(1);
     if (!project) return;
+    resolved?.(project.id);
     if (project.runtimeState !== 'active')
       throw new RuntimeError(
         503,

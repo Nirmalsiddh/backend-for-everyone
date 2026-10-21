@@ -1,3 +1,7 @@
+import { ObservabilityReadStore } from './modules/observability/read-store.js';
+import { TelemetryStore } from './modules/observability/store.js';
+import { EventWriter } from './modules/observability/writer.js';
+import { ObservabilityRepository } from './modules/observability/queries.js';
 import { runtimeAdmission } from './operations/runtime-admission.js';
 import { setupLeases } from './operations/setup-lease.js';
 import { PostgresDocsRepository } from './modules/api-docs/repository.js';
@@ -20,7 +24,17 @@ async function main() {
   const { db, pool } = createPlatformDatabase(env.databaseUrl);
   const leases = setupLeases(env.databaseUrl);
   const readiness = createReadiness(env.databaseUrl);
+  let lastTelemetryLog = 0;
+  const warn = (message: string, count = 0) => {
+    if (Date.now() - lastTelemetryLog < 10000) return;
+    lastTelemetryLog = Date.now();
+    console.warn(JSON.stringify({ event: message, count }));
+  };
+  const telemetryStore = new TelemetryStore(env.databaseUrl, () => warn('observability_pool_error'));
+  const writer = new EventWriter((events) => telemetryStore.insert(events), warn);
   const app = buildApp({
+    telemetry: writer,
+    observabilityRepository: new ObservabilityRepository(new ObservabilityReadStore(pool)),
     env,
     runtimeAdmission: runtimeAdmission(db),
     acquireSetupLease: leases.acquire,
@@ -36,8 +50,22 @@ async function main() {
     authRepository: new PostgresAuthRepository(db),
     workflowRepository: new PostgresWorkflowRepository(db),
   });
+  let cleaning = false;
+  const cleanup = setInterval(() => {
+    if (cleaning) return;
+    cleaning = true;
+    void (async () => {
+      for (let batch = 0; batch < 5; batch++) {
+        if (await telemetryStore.cleanup() < 1000) break;
+      }
+    })().catch(() => warn('observability_cleanup_failed')).finally(() => { cleaning = false; });
+  }, 300000);
+  cleanup.unref();
   pool.on('error', () => app.log.error('Platform database pool error'));
   app.addHook('onClose', async () => {
+    clearInterval(cleanup);
+    await writer.close();
+    await telemetryStore.close();
     await leases.close();
     await readiness.close();
     await pool.end();

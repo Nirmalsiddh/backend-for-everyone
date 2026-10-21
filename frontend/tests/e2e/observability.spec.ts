@@ -1,0 +1,54 @@
+import { test, expect } from '@playwright/test';
+import { randomUUID } from 'node:crypto';
+import { signupLogin, login } from './platform-account';
+test('owner observability correlates requests, protects payloads, and leaves public contracts unchanged',async({page})=>{
+  if(process.env.E2E_PLATFORM_ACCOUNT_EMAIL)await login(page,process.env.E2E_PLATFORM_ACCOUNT_EMAIL);else await signupLogin(page);
+  async function request(path:string,method='GET',body?:unknown,authorization?:string){return page.evaluate(async({path,method,body,authorization})=>{const r=await fetch(path,{method,headers:{...(body===undefined?{}:{'content-type':'application/json'}),...(authorization?{authorization}:{})},...(body===undefined?{}:{body:JSON.stringify(body)})});return{status:r.status,id:r.headers.get('x-request-id'),body:r.status===204?null:await r.json()};},{path,method,body,authorization});}
+  async function call(path:string,method='GET',body?:unknown){const r=await request(path,method,body);expect(r.status,JSON.stringify(r.body)).toBeLessThan(300);return r.body;}
+  const suffix=randomUUID().slice(0,8),project=await call('/api/management/projects','POST',{name:'Telemetry '+suffix,slug:'telemetry-'+suffix});
+  const base='/api/management/projects/'+project.id,u=new URL(process.env.E2E_CUSTOMER_DATABASE_URL!);
+  await page.goto('/projects/'+project.id+'/observability');
+  await expect.poll(async()=>{if(await page.getByText('No runtime requests recorded yet.',{exact:true}).isVisible())return true;const refresh=page.getByRole('button',{name:'Refresh',exact:true});if(await refresh.isEnabled())await refresh.click();return false;},{timeout:10000}).toBe(true);
+  await call(base+'/database-connection','POST',{label:'Disposable',host:u.hostname,port:Number(u.port||5432),database:u.pathname.slice(1),username:decodeURIComponent(u.username),password:decodeURIComponent(u.password),schema:process.env.E2E_CUSTOMER_SCHEMA,ssl:false});
+  const table=await call(base+'/schema/tables','POST',{name:'telemetry_'+suffix.replaceAll('-',''),fields:[{name:'label',type:'text',nullable:false,unique:true}]});
+  const path=base+'/schema/tables/'+table.id,preview=await call(path+'/preview','POST');await call(path+'/apply','POST',{expectedDraftRevision:preview.draftRevision,planHash:preview.planHash});
+  const endpoint=await call(path+'/api','PUT',{enabledOperations:['list','get','create','delete'],expectedAppliedRevision:1,expectedConfigRevision:0});
+  const key=(await call(base+'/api-keys','POST',{name:'Telemetry fixture',scope:'read_write'})).key;
+  await call(base+'/auth','PUT',{enabled:true,signupEnabled:true,expectedRevision:0});await call(base+'/auth/provision','POST',{expectedRevision:1});
+  const wf=await call(base+'/workflows','POST',{path:'echo-'+suffix,definition:{auth:'key_only',input:{text:{type:'string',required:true,maxLength:100}},steps:[{id:randomUUID(),name:'respond',type:'response',status:200,body:{kind:'reference',source:'request',path:['body','text']}}]}});
+  const wfPath=base+'/workflows/'+wf.id,wfPreview=await call(wfPath+'/preview','POST');await call(wfPath+'/publish','POST',{expectedDraftRevision:wfPreview.draftRevision,definitionHash:wfPreview.definitionHash});
+  await call(wfPath,'PATCH',{expectedDraftRevision:wf.draftRevision,enabled:true});const wfBefore=await call(wfPath),authBefore=await call(base+'/auth');
+  const sdk=await call(base+'/sdk/typescript'),openapi=await call(base+'/openapi'),saved=await call(path);
+  const runtime='/api/runtime/'+project.slug+'/'+endpoint.resourceName;
+  const sentinel='private-synthetic-email@example.test';
+  const created=await request(runtime,'POST',{label:sentinel},'Bearer '+key);expect(created.status).toBe(201);
+  const conflict=await request(runtime,'POST',{label:sentinel},'Bearer '+key);expect(conflict.status).toBe(409);
+  expect((await request(runtime+'?filter[label][eq]='+encodeURIComponent(sentinel),'GET',undefined,'Bearer '+key)).status).toBe(200);
+  const authPath='/api/runtime/'+project.slug+'/auth/';const account={email:'synthetic-'+suffix+'@example.test',password:'synthetic-private-password-123'};
+  expect((await request(authPath+'signup','POST',account)).status).toBe(201);
+  const session=await request(authPath+'login','POST',account);expect(session.status).toBe(200);
+  expect((await request(authPath+'me','GET',undefined,'Bearer '+session.body.token)).status).toBe(200);
+  expect((await request(authPath+'logout','POST',undefined,'Bearer '+session.body.token)).status).toBe(204);
+  expect((await request(authPath+'me','GET',undefined,'Bearer '+session.body.token)).status).toBe(401);
+  const wfRuntime='/api/runtime/'+project.slug+'/echo-'+suffix;
+  expect((await request(wfRuntime,'POST',{text:'synthetic-private-workflow-output'},'Bearer '+key)).status).toBe(200);
+  expect((await request(wfRuntime,'POST',{extra:'synthetic-private-workflow-input'},'Bearer '+key)).status).toBe(400);
+  for(let i=0;i<30;i++)await request(runtime,'GET',undefined,'Bearer synthetic-private-session');
+  await page.goto('/projects/'+project.id+'/observability');
+  await expect(page.getByRole('heading',{name:'Observability',exact:true})).toBeVisible();
+  await expect.poll(async()=>{const r=await request(base+'/observability/summary');return r.body.recordedRequests;},{timeout:10000}).toBeGreaterThanOrEqual(35);
+  await page.getByRole('button',{name:'Refresh',exact:true}).click();
+  await expect(page.getByRole('button',{name:'Next page',exact:true})).toBeEnabled();await page.getByRole('button',{name:'Next page',exact:true}).click();await expect(page.getByRole('button',{name:'Newest requests',exact:true})).toBeEnabled();
+  await expect(page.getByRole('heading',{name:'Recent 4xx/5xx responses'})).toBeVisible();
+  await page.getByLabel('Exact request ID').fill(conflict.id!);await page.getByRole('button',{name:'Find request',exact:true}).click();
+  const matches=page.getByRole('table',{name:'Request ID matches'});await expect(matches).toContainText('409');
+  await matches.getByRole('button',{name:'Inspect '+conflict.id}).click();await expect(page.getByRole('region',{name:'Request details'})).toContainText('VALUE_CONFLICT');
+  for(const value of [sentinel,key,created.body.id,account.email,account.password,session.body.token,session.body.user.id,'synthetic-private-workflow-output','synthetic-private-workflow-input'])await expect(page.locator('main')).not.toContainText(value);
+  for(const window of ['1h','7d','24h']){await page.getByLabel('Time window').selectOption(window);await expect(page.getByLabel('Time window')).toHaveValue(window);}
+  expect((await call(base+'/sdk/typescript')).source).toBe(sdk.source);expect(await call(base+'/openapi')).toEqual(openapi);expect(await call(path)).toEqual(saved);expect(await call(path+'/api')).toEqual(endpoint);expect(await call(wfPath)).toEqual(wfBefore);expect(await call(base+'/auth')).toEqual(authBefore);
+  const recorded=await call(base+'/observability/requests?limit=100');expect(recorded.items.some((e:any)=>e.operation==='workflow.execute')).toBe(true);expect(recorded.items.some((e:any)=>e.operation==='auth.me'&&e.principalKind==='app_user')).toBe(true);
+  const owned=await call('/api/management/projects');
+  const other=owned.items.find((item:{id:string})=>item.id!==project.id) ?? await call('/api/management/projects','POST',{name:'Empty telemetry',slug:'empty-'+suffix});
+  await page.goto('/projects/'+other.id+'/observability');await expect(page.getByRole('heading',{name:'Observability',exact:true})).toBeVisible();await expect(page.getByRole('region',{name:'Request details'})).toHaveCount(0);
+  await page.getByLabel('Exact request ID').fill(conflict.id!);await page.getByRole('button',{name:'Find request',exact:true}).click();await expect(page.getByText('No retained request found.')).toBeVisible();
+});

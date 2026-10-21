@@ -1,3 +1,4 @@
+import { eventFields, countFields } from '../observability';
 import { projectDto, tableDto, pick } from './dto';
 const uuid = '[a-f0-9-]{36}';
 type Operation = {
@@ -56,6 +57,12 @@ const rule = (
   project,
 });
 export const operations: Operation[] = [
+  rule('observability/summary', ['GET'], (data) => {
+    const d = pick(data, ['window','asOf',...countFields,'p50DurationMs','p95DurationMs','topOperations','topErrorCodes']);
+    return { ...d, topOperations: (d.topOperations as unknown[]).map((v) => pick(v, ['resource','operation',...countFields,'p95DurationMs'])), topErrorCodes: (d.topErrorCodes as unknown[]).map((v) => pick(v, ['errorCode','count'])) };
+  }),
+  rule('observability/requests', ['GET'], (data) => ({ items: ((data as { items: unknown[] }).items).map((v) => pick(v, eventFields)), nextCursor: (data as { nextCursor: unknown }).nextCursor })),
+  rule(`observability/requests/${uuid}`, ['GET'], (data) => ({ items: ((data as { items: unknown[] }).items).map((v) => pick(v, eventFields)) })),
   {
     pattern: /^projects$/,
     methods: ['GET', 'POST'],

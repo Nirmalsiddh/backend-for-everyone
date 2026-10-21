@@ -1,3 +1,4 @@
+import { observabilityQueryAllowed } from '../observability';
 import { boundedBody } from './body-limit';
 import { allowedRequest, backendOrigin, requestToken } from './auth-config';
 import { operationFor } from './operations';
@@ -62,6 +63,7 @@ export async function adapter(
     const query = url.searchParams;
     if (
       !runtime &&
+      !observabilityQueryAllowed(path, [...query.keys()]) &&
       [...query.keys()].some(
         (k) => path !== 'projects' || !['limit', 'offset'].includes(k),
       )
