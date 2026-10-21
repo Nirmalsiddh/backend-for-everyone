@@ -1,3 +1,6 @@
+import { verifyFieldCatalogTransition } from './field-catalog.js';
+import { executeFieldBundle } from './field-evolution.js';
+import { v4CatalogContext } from './default-catalog.js';
 import type { CredentialEncryption } from '../../security/encryption.js';
 import { writeReceipt } from '../../operations/receipts.js';
 import { boundedClient } from './admission.js';
@@ -19,7 +22,7 @@ export interface SchemaClient {
   query(
     text: string,
     values?: unknown[],
-  ): Promise<{ rows: Record<string, unknown>[] }>;
+  ): Promise<{ rows: Record<string, unknown>[]; rowCount?: number | null }>;
   end(): Promise<void>;
   on(event: 'error', listener: (error: Error) => void): unknown;
 }
@@ -141,15 +144,17 @@ export function createSchemaExecutor(
         }
         if (invalidData) throw new SchemaError(422, 'SCHEMA_DATA_INVALID', 'Existing data does not satisfy the proposed constraint; no schema changes were applied');
       }
+      if (plan.version === 4) await executeFieldBundle(client, plan);
       for (const statement of plan.statements) await client.query(statement);
       const snapshot = await readCatalog(
         client,
         plan.definition.schema,
         plan.definition.name,
         afterTables,
-        plan.version === 3 ? { version: 3 } : applied?.catalog,
+        plan.version === 4 ? v4CatalogContext(plan) : plan.version === 3 ? ((applied?.catalog as { version?: number })?.version === 4 ? applied?.catalog : { version: 3 }) : applied?.catalog,
       );
       verifyPostCatalog(snapshot, plan.definition);
+      await verifyFieldCatalogTransition(client, plan, snapshot);
       for (const dependency of plan.dependencies ?? []) {
         if (
           canonical(
@@ -191,11 +196,14 @@ export function createSchemaExecutor(
         error && typeof error === 'object' && 'code' in error
           ? String(error.code)
           : '';
+      if (plan.version === 4 && ['22001', '22021', '22P02', '22003', '22007', '22008'].includes(code)) throw new SchemaError(422, 'SCHEMA_DATA_INVALID', 'Value cannot be represented exactly by the target field');
+      if (code === '23505') throw new SchemaError(422, 'SCHEMA_DATA_INVALID', 'Existing data conflicts with a managed uniqueness constraint');
+      if (code === '23503') throw new SchemaError(409, 'RELATIONSHIP_CONFLICT', 'Existing data conflicts with a managed relationship');
       if (['42P07', '42701', '42P01'].includes(code))
         throw conflict(
           'Customer database object conflicts with the schema plan',
         );
-      if (['55P03', '57014', 'ETIMEDOUT'].includes(code))
+      if (['55P03', '57014', 'ETIMEDOUT', 'CUSTOMER_OPERATION_TIMEOUT'].includes(code))
         throw new SchemaError(
           504,
           'SCHEMA_TIMEOUT',

@@ -1,3 +1,4 @@
+import { v4Preview } from './evolution-v4.js';
 import { inspectReferenceTargets } from '../../database/customer-db/reference-targets.js';
 import { DestinationError } from '../../security/customer-destination.js';
 import { schemaTableDto } from './dto.js';
@@ -106,7 +107,7 @@ export class SchemaService {
       planHash: plan.hash,
       draftRevision: plan.revision,
       operation: plan.operation,
-      ...(plan.evolution ? { actions: plan.evolution.actions.map((action) => action.kind === 'set_not_null' ? { kind: action.kind, field: plan.definition.fields.find((field) => field.id === action.fieldId)!.name } : { kind: action.kind, fields: action.index.fieldIds.map((id) => plan.definition.fields.find((field) => field.id === id)!.name) }) } : {}),
+      ...(plan.version === 4 ? { version: 4, actions: v4Preview(plan) } : plan.evolution ? { actions: plan.evolution.actions.map((action) => action.kind === 'set_not_null' ? { kind: action.kind, field: plan.definition.fields.find((field) => field.id === action.fieldId)!.name } : { kind: action.kind, fields: action.index.fieldIds.map((id) => plan.definition.fields.find((field) => field.id === id)!.name) }) } : {}),
       relationships: plan.definition.fields
         .filter((f) => f.relationship)
         .map((f) => ({
@@ -116,7 +117,7 @@ export class SchemaService {
           )!.definition.name,
           nullable: f.nullable,
         })),
-      sql: plan.statements.join('\n'),
+      sql: plan.version === 4 ? '' : plan.statements.join('\n'),
     };
   }
   async apply(
@@ -196,7 +197,10 @@ export class SchemaService {
         null,
       );
     } catch {
-      // The durable applying record blocks retries even if the platform is unavailable.
+      if (plan.version === 4) await this.repository.finish(
+        projectId, ownerId, tableId, migrationId, plan, 'outcome_unknown', null, 'SCHEMA_OUTCOME_UNKNOWN',
+      ).catch(() => {});
+      // If the platform is unavailable, the durable applying record still blocks retries.
       throw new SchemaError(
         503,
         'SCHEMA_OUTCOME_UNKNOWN',

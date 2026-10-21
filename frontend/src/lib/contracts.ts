@@ -14,6 +14,7 @@ export type Project = {
 };
 export type FieldType = (typeof fieldTypes)[number];
 export type Field = {
+  backfillIntent?: { kind: 'literal'; value: unknown };
   relationship?: { tableId: string; onDelete: 'restrict' };
   id?: string;
   name: string;

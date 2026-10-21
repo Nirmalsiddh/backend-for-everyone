@@ -219,6 +219,7 @@ export const schemaFields = pgTable(
     nullable: booleanColumn('nullable').notNull(),
     unique: booleanColumn('unique').notNull(),
     default: jsonb('default_value').$type<FieldDefault>(),
+    backfillIntent: jsonb('backfill_intent').$type<import('../../modules/schema-builder/types.js').BackfillIntent>(),
   },
   (table) => [
     uniqueIndex('schema_fields_name_unique').on(table.tableId, table.name),
@@ -272,7 +273,7 @@ export const schemaMigrations = pgTable(
     planContext: jsonb('plan_context').$type<{
       version: 2;
       dependencies: import('../../modules/schema-builder/types.js').RelationshipDependency[];
-    } | import('../../modules/schema-builder/types.js').EvolutionContext>(),
+    } | import('../../modules/schema-builder/types.js').EvolutionContext | import('../../modules/schema-builder/types.js').EvolutionV4Context>(),
     definition: jsonb('definition').$type<Definition>().notNull(),
     status: varchar('status', { length: 24 })
       .$type<MigrationStatus>()

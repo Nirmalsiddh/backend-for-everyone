@@ -1,3 +1,4 @@
+import { generateV4Plan, needsV4 } from './evolution-v4.js';
 import { generateEvolutionPlan, needsEvolution } from './evolution.js';
 import { relationshipDependencies } from './relationships.js';
 import { createHash } from 'node:crypto';
@@ -159,5 +160,6 @@ export function generateLegacyPlan(
 }
 
 export function generatePlan(table: TableRecord, tables: ManagedTable[] = [], bound?: RelationshipDependency[]): Plan {
-  return needsEvolution(table) ? generateEvolutionPlan(table, tables, bound) : generateLegacyPlan(table, tables, bound);
+  if (!table.appliedDefinition && table.fields.some((field) => field.backfillIntent !== undefined)) throw invalid('Fill intent requires an applied table');
+  return needsV4(table) ? generateV4Plan(table, tables, bound) : needsEvolution(table) ? generateEvolutionPlan(table, tables, bound) : generateLegacyPlan(table, tables, bound);
 }

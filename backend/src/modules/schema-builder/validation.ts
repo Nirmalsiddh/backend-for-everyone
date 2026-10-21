@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { uuidPattern } from '../../config/env.js';
 import { invalid } from './errors.js';
-import type { DraftInput, FieldDefinition, FieldInput } from './types.js';
+import type { DraftInput, DraftField, FieldDefinition, FieldInput } from './types.js';
 
 const reserved = new Set(
   'id table select from where group order user current_user session_user public schema constraint primary unique references check default null true false insert update delete create alter drop index grant revoke returning limit offset join on as and or not case when then else end column all distinct union having into values foreign key timestamp authorization current_date current_time current_timestamp localtime localtimestamp with recursive window over partition by using only lateral fetch for to do in is like between exists any some ctid oid xmin xmax cmin cmax tableoid'.split(
@@ -148,7 +148,7 @@ export function validateScalar(field: FieldDefinition, value: unknown) {
 export function normalizeDraft(
   input: DraftInput,
   existing: FieldDefinition[] = [],
-): { name: string; fields: FieldDefinition[] } {
+): { name: string; fields: DraftField[] } {
   exactKeys(input, ['name', 'fields', 'indexes']);
   validateIdentifier(input.name);
   if (!Array.isArray(input.fields) || input.fields.length > 100)
@@ -156,7 +156,7 @@ export function normalizeDraft(
   const names = new Set<string>();
   const ids = new Set<string>();
   const fields = input.fields.map(
-    (item: FieldInput, position): FieldDefinition => {
+    (item: FieldInput, position): DraftField => {
       if (!item || typeof item !== 'object') throw invalid('Invalid field');
       exactKeys(item, [
         'id',
@@ -167,6 +167,7 @@ export function normalizeDraft(
         'unique',
         'default',
         'relationship',
+        'backfillIntent',
       ]);
       validateIdentifier(item.name);
       if (names.has(item.name)) throw invalid('Duplicate field name');
@@ -265,6 +266,14 @@ export function normalizeDraft(
         default: item.default ?? null,
       };
       validateDefault(field);
+      if (item.backfillIntent !== undefined) {
+        const intent = item.backfillIntent;
+        if (!intent || typeof intent !== 'object' || Array.isArray(intent)) throw invalid('Invalid fill intent');
+        exactKeys(intent, ['kind', 'value']);
+        if (intent.kind !== 'literal' || !Object.hasOwn(intent, 'value') || field.type === 'jsonb' || field.nullable) throw invalid('Fill requires a supported requiredness transition');
+        validateScalar(field, intent.value);
+        return { ...field, backfillIntent: { kind: 'literal', value: intent.value } };
+      }
       return field;
     },
   );

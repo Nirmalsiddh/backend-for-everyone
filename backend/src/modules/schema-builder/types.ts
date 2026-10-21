@@ -40,7 +40,17 @@ export interface RelationshipDependency {
   definition: Definition;
   catalog: unknown;
 }
+export type BackfillIntent = { kind: 'literal'; value: unknown };
+export interface DraftField extends FieldDefinition { backfillIntent?: BackfillIntent }
+export interface FieldBundle {
+  fieldId: string; addition: boolean; enforceRequired: boolean; defaultChanged: boolean;
+  fill?: BackfillIntent;
+}
+export interface EvolutionV4Context extends Omit<EvolutionContext, 'version'> {
+  version: 4; bundle: FieldBundle;
+}
 export interface FieldInput {
+  backfillIntent?: BackfillIntent;
   relationship?: Relationship;
   id?: string;
   name: string;
@@ -87,7 +97,7 @@ export interface TableRecord {
   appliedDefinition: AppliedDefinition | null;
   createdAt: Date;
   updatedAt: Date;
-  fields: FieldDefinition[];
+  fields: DraftField[];
   indexes?: ManagedIndex[];
   applyStatus?: {
     status: MigrationStatus;
@@ -102,8 +112,8 @@ export interface DraftInput {
   fields: FieldInput[];
 }
 export interface Plan {
-  version?: 2 | 3;
-  evolution?: EvolutionContext;
+  version?: 2 | 3 | 4;
+  evolution?: EvolutionContext | EvolutionV4Context;
   dependencies?: RelationshipDependency[];
   managedTables?: ManagedTable[];
   receipt?: { projectId: string; operationId: string };

@@ -71,6 +71,13 @@
       "when": 1792504417438,
       "tag": "0009_managed_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792600000000,
+      "tag": "0010_safe_schema_evolution",
+      "breakpoints": true
     }
   ]
 }

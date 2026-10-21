@@ -1,3 +1,5 @@
+See [Safer schema evolution](SAFE_SCHEMA_EVOLUTION.md) for the v0.12 applied-field/default/fill scope and [validation](SAFE_SCHEMA_EVOLUTION_VALIDATION.md) for measured evidence and limits.
+
 # Backend Platform
 
 A PostgreSQL-backed API builder, with a management API foundation, encrypted customer PostgreSQL connection management, a Schema Builder MVP, predefined runtime APIs, customer-owned end-user authentication, and custom transactional workflows. Customer application data will remain in customer-owned databases; platform PostgreSQL stores management metadata only.

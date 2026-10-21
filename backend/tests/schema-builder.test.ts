@@ -87,6 +87,8 @@ test('draft edits preserve field identities and applied tables allow only nullab
 
     { fields: [...record.fields, { ...additions.fields[1]!, nullable: false }] },
     { fields: [...record.fields, { ...additions.fields[1]!, unique: true }] },
-    { fields: [...record.fields, { ...additions.fields[1]!, default: { kind: 'literal' as const, value: 'x' } }] },
   ]) assert.throws(() => generatePlan({ ...applied, ...changed }), { code: 'SCHEMA_CONFLICT' });
+  const withDefault = { ...applied, fields: [...record.fields, { ...additions.fields[1]!, default: { kind: 'literal' as const, value: 'x' } }] };
+  assert.equal(generatePlan(withDefault).version, 4);
+  assert.throws(() => generateLegacyPlan(withDefault), { code: 'SCHEMA_CONFLICT' });
 });

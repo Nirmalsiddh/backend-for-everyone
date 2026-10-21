@@ -14,6 +14,8 @@ import {
   mayReplacePreset,
   toForm,
   validateFields,
+  validateEvolutionStrategies,
+  applyConfirmation,
   type FieldForm,
 } from '@/lib/schema-form';
 import { useAction, ActionState, DirtyGuard } from '@/components/ui';
@@ -58,10 +60,11 @@ export function SchemaEditor({
     success: 'Schema operation completed; saved status refreshed',
   });
   const [preview, setPreview] = useState<{
+    version?: number;
     sql: string;
     planHash: string;
     draftRevision: number;
-    actions?: { kind: string; field?: string; fields?: string[] }[];
+    actions?: { kind: string; field?: string; fields?: string[]; description?: string }[];
     relationships?: { field: string; target: string; nullable: boolean }[];
   } | null>(null);
   const f = useForm<{ name: string; fields: FieldForm[]; indexes: ManagedIndex[] }>({
@@ -82,7 +85,7 @@ export function SchemaEditor({
       f.reset({ name: table.name, fields: table.fields.map(toForm), indexes: table.indexes ?? [] });
       setSavedRevision(table.draftRevision);
     }
-  }, [table?.draftRevision, action.busy, f.formState.isDirty]);
+  }, [table?.id, table?.draftRevision, table?.appliedRevision, table?.appliedPhysicalRevision, table?.applyStatus?.status, action.busy, f.formState.isDirty]);
   const applied = new Set(
     table?.appliedDefinition?.definition.fields.flatMap((x) => x.id ? [x.id] : []),
   );
@@ -90,6 +93,7 @@ export function SchemaEditor({
     return action.run(
       async () => {
         const fields = validateFields(v.fields);
+        validateEvolutionStrategies(fields, table?.appliedDefinition?.definition.fields);
         validateIndexForms(v.indexes, fields);
         const t = await api<Table>(
           table ? path + '/draft' : path,
@@ -186,7 +190,7 @@ export function SchemaEditor({
           {ownershipWarning}
         </p>
         <p className="warning">
-          Applied fields cannot be renamed, dropped, or have their types changed. You may add nullable fields without defaults, add a managed index, or make one existing field required per Apply. For owner-protected records, add a UUID
+          Applied fields cannot be renamed, dropped, or have their types changed. Apply one field bundle or managed index at a time. Supported literal defaults affect future omitted inserts; fills only accompany final requiredness. For owner-protected records, add a UUID
           ownership field such as owner_id before applying; existing rows will
           not acquire an owner automatically.
         </p>
@@ -198,19 +202,19 @@ export function SchemaEditor({
           const locked = !!row.id && applied.has(row.id);
           const value = values.fields[i];
           return (
-            <div key={row.formKey}><fieldset disabled={locked || action.busy}>
+            <div key={row.formKey}><fieldset disabled={action.busy}>
               <legend>
                 Field {i + 1}
-                {locked ? ' · applied, read-only' : ''}
+                {locked ? ' · applied' : ''}
               </legend>
               <div className="row">
                 <label>
                   Field name
-                  <input {...f.register(`fields.${i}.name`)} required />
+                  <input {...f.register(`fields.${i}.name`)} required disabled={locked} />
                 </label>
                 <label>
                   Type
-                  <select
+                  <select disabled={locked}
                     {...f.register(`fields.${i}.type`, {
                       onChange: (event) => {
                         if (
@@ -246,7 +250,7 @@ export function SchemaEditor({
                       <select
                         {...f.register(`fields.${i}.targetTableId`)}
                         required
-                        disabled={!targets || targetError}
+                        disabled={locked || !targets || targetError}
                       >
                         <option value="">Choose an applied table</option>
                         {targets?.targets
@@ -292,8 +296,8 @@ export function SchemaEditor({
                     </p>
                     {table?.appliedRevision != null && (
                       <p>
-                        Existing records will have no reference until you set
-                        one.
+                        Nullable additions start without a reference. Required
+                        additions need a valid reference to fill historical rows.
                       </p>
                     )}
                   </div>
@@ -302,7 +306,7 @@ export function SchemaEditor({
                   <label>
                     Length
                     <input
-                      type="number"
+                      type="number" disabled={locked}
                       {...f.register(`fields.${i}.length`)}
                       min={1}
                       max={10000}
@@ -314,7 +318,7 @@ export function SchemaEditor({
                     <label>
                       Precision
                       <input
-                        type="number"
+                        type="number" disabled={locked}
                         {...f.register(`fields.${i}.precision`)}
                         min={1}
                         max={38}
@@ -323,7 +327,7 @@ export function SchemaEditor({
                     <label>
                       Scale
                       <input
-                        type="number"
+                        type="number" disabled={locked}
                         {...f.register(`fields.${i}.scale`)}
                         min={0}
                       />
@@ -335,12 +339,13 @@ export function SchemaEditor({
                 <input
                   type="checkbox"
                   checked={!value.nullable}
+                  aria-label={locked && table?.appliedDefinition?.definition.fields.find((field) => field.id === row.id)?.nullable ? `Make ${value.name} required · All existing rows must already have a value.` : undefined}
                   onChange={(e) =>
                     f.setValue(`fields.${i}.nullable`, !e.target.checked, {
                       shouldDirty: true,
                     })
                   }
-                  disabled={table?.appliedRevision != null}
+                  disabled={locked && !table?.appliedDefinition?.definition.fields.find((field) => field.id === row.id)?.nullable}
                 />
                 Required
               </label>
@@ -365,12 +370,12 @@ export function SchemaEditor({
                 <select
                   {...f.register(`fields.${i}.defaultKind`)}
                   disabled={
-                    table?.appliedRevision != null || value.type === 'reference'
+                    value.type === 'reference' || (table?.appliedRevision != null && ['uuid', 'jsonb'].includes(value.type)) || (table?.appliedRevision != null && !['text', 'varchar', 'integer', 'bigint', 'decimal', 'boolean'].includes(value.type) && value.defaultKind === 'none')
                   }
                 >
                   <option value="none">None</option>
-                  <option value="literal">Typed literal</option>
-                  {value.type === 'timestamp' && (
+                  {(table?.appliedRevision == null || ['text', 'varchar', 'integer', 'bigint', 'decimal', 'boolean'].includes(value.type) || value.defaultKind === 'literal') && <option value="literal">Typed literal</option>}
+                  {value.type === 'timestamp' && (table?.appliedRevision == null || value.defaultKind === 'current_timestamp') && (
                     <option value="current_timestamp">Current timestamp</option>
                   )}
                 </select>
@@ -406,16 +411,20 @@ export function SchemaEditor({
               )}
               <button
                 type="button"
-                className="secondary"
+                className="secondary" disabled={locked}
                 onClick={() => rows.remove(i)}
               >
                 Remove field
               </button>
             </fieldset>
-            {locked && table?.appliedDefinition?.definition.fields.find((field) => field.id === row.id)?.nullable && <label>
-              <input type="checkbox" checked={!value.nullable} disabled={action.busy} onChange={(event) => f.setValue(`fields.${i}.nullable`, !event.target.checked, { shouldDirty: true })} />
-              Make {value.name} required · All existing rows must already have a value.
-            </label>}
+            {table?.appliedRevision != null && !value.nullable && value.type !== 'jsonb' && (!locked || table.appliedDefinition?.definition.fields.find((field) => field.id === row.id)?.nullable) && <fieldset disabled={action.busy}>
+              <legend>Historical values for {value.name}</legend>
+              <label><input type="checkbox" {...f.register(`fields.${i}.fillEnabled`)} />Fill existing NULL values with</label>
+              {value.fillEnabled && <label>Fill value
+                {value.type === 'boolean' ? <select {...f.register(`fields.${i}.fillText`)}><option value="">Choose boolean</option><option value="true">true</option><option value="false">false</option></select> : <input {...f.register(`fields.${i}.fillText`)} />}
+              </label>}
+              <p>Only SQL NULL values are filled. A new required field needs a fill, a supported future default, or both. Existing non-NULL values are preserved.</p>
+            </fieldset>}
             </div>
           );
         })}
@@ -478,7 +487,7 @@ export function SchemaEditor({
             {table.appliedRevision === null ? 'Not applied' : 'Applied'}
           </p>
           <p>
-            Apply one index or requiredness change at a time. Existing nullable column/reference additions remain supported.
+            Apply one field bundle or one index at a time. Existing nullable column/reference additions remain supported.
           </p>
           <button
             disabled={action.busy || f.formState.isDirty}
@@ -501,7 +510,7 @@ export function SchemaEditor({
                 {table.name}
               </h2>
               {preview.actions?.map((operation, index) => <p key={index}>
-                {operation.kind === 'set_not_null' ? `Make field required: ${operation.field}. All existing rows must already have a value.` : `${operation.kind === 'create_unique_index' ? 'Create unique index' : 'Create normal index'}: ${operation.fields?.join(', ')}.${operation.kind === 'create_unique_index' ? ' Existing duplicate values will block Apply.' : ''}`}
+                {operation.description ?? (operation.kind === 'set_not_null' ? `Make field required: ${operation.field}. All existing rows must already have a value.` : `${operation.kind === 'create_unique_index' ? 'Create unique index' : 'Create normal index'}: ${operation.fields?.join(', ')}.${operation.kind === 'create_unique_index' ? ' Existing duplicate values will block Apply.' : ''}`)}
               </p>)}
               <ul>
                 {table.fields
@@ -537,11 +546,11 @@ export function SchemaEditor({
               <p>
                 Review this change before applying it to the connected database.
               </p>
-              <details>
+              {preview.version !== 4 && <details>
                 <summary>Advanced details: generated SQL and revision</summary>
                 <h3>Generated SQL · revision {preview.draftRevision}</h3>
                 <pre>{preview.sql}</pre>
-              </details>
+              </details>}
               <p>
                 Creates or changes this table in your connected PostgreSQL
                 database.
@@ -555,7 +564,7 @@ export function SchemaEditor({
                 onClick={() => {
                   if (
                     confirm(
-                      'Reads and writes may be temporarily unavailable while this change runs. ' + (preview.actions?.some((operation) => operation.kind === 'create_unique_index') ? 'Existing duplicate values will block Apply.' : preview.actions?.some((operation) => operation.kind === 'set_not_null') ? 'All existing rows must already have a value.' : 'Review the preview before Apply.'),
+                      applyConfirmation(preview),
                     )
                   )
                     void action.run(

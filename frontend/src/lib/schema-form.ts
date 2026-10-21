@@ -12,6 +12,8 @@ export type FieldForm = {
   scale: string;
   defaultKind: 'none' | 'literal' | 'current_timestamp';
   defaultText: string;
+  fillEnabled: boolean;
+  fillText: string;
 };
 export const emptyField = (): FieldForm => ({
   name: '',
@@ -24,6 +26,8 @@ export const emptyField = (): FieldForm => ({
   scale: '2',
   defaultKind: 'none',
   defaultText: '',
+  fillEnabled: false,
+  fillText: '',
 });
 export function toForm(field: Field): FieldForm {
   const { relationship: _relationship, ...ordinary } = field;
@@ -37,6 +41,8 @@ export function toForm(field: Field): FieldForm {
     length: String(field.options?.length ?? 200),
     precision: String(field.options?.precision ?? 12),
     scale: String(field.options?.scale ?? 2),
+    fillEnabled: field.backfillIntent !== undefined,
+    fillText: field.backfillIntent === undefined ? '' : typeof field.backfillIntent.value === 'string' ? field.backfillIntent.value : JSON.stringify(field.backfillIntent.value),
     defaultKind: field.default?.kind ?? 'none',
     defaultText:
       field.default?.kind === 'literal'
@@ -113,12 +119,22 @@ export function toField(f: FieldForm): Field {
       if (n < -(2n ** 63n) || n > 2n ** 63n - 1n)
         throw new Error('Bigint outside supported range');
     }
-    if (f.type === 'decimal' && !/^-?\d+(?:\.\d+)?$/.test(f.defaultText))
-      throw new Error('Invalid decimal default');
+    if (f.type === 'decimal') {
+      if (!/^-?\d+(?:\.\d+)?$/.test(f.defaultText) || f.defaultText.length > 42) throw new Error('Invalid decimal value');
+      const [whole = '', fraction = ''] = f.defaultText.replace(/^-/, '').split('.');
+      if (whole.replace(/^0+/, '').length > field.options!.precision! - field.options!.scale! || fraction.length > field.options!.scale!) throw new Error('Decimal exceeds precision or scale');
+    }
+    if (['text', 'varchar'].includes(f.type) && (f.defaultText.includes('\0') || [...f.defaultText].length > (field.options?.length ?? 10000))) throw new Error('Text exceeds supported length');
     if (f.type === 'uuid') z.uuid().parse(value);
     if (f.type === 'date') z.iso.date().parse(value);
     if (f.type === 'timestamp') z.iso.datetime({ offset: true }).parse(value);
     field.default = { kind: 'literal', value };
+  }
+  if (f.fillEnabled) {
+    if (f.nullable || f.type === 'jsonb') throw new Error('Fill requires a supported required field');
+    const typed = toField({ ...f, fillEnabled: false, type: f.type === 'reference' ? 'uuid' : f.type, defaultKind: 'literal', defaultText: f.fillText });
+    if (typed.default?.kind !== 'literal') throw new Error('Invalid fill');
+    field.backfillIntent = typed.default;
   }
   return field;
 }
@@ -180,4 +196,17 @@ export function mayReplacePreset(
   confirmReplace: () => boolean,
 ) {
   return !dirty || confirmReplace();
+}
+
+export function validateEvolutionStrategies(fields: Field[], applied: Field[] | undefined) {
+  if (!applied) return;
+  for (const field of fields) if (!applied.some((old) => old.id === field.id) && field.nullable === false && !field.backfillIntent && !field.default) throw new Error(`New required field ${field.name} needs a fill, a supported future default, or both`);
+}
+
+export function applyConfirmation(preview: { version?: number; actions?: { kind: string; description?: string }[] }) {
+  const effects = preview.version === 4
+    ? preview.actions?.map((action) => action.description).filter(Boolean).join(' ') ?? ''
+    : preview.actions?.some((action) => action.kind === 'create_unique_index') ? 'Existing duplicate values will block Apply.'
+      : preview.actions?.some((action) => action.kind === 'set_not_null') ? 'All existing rows must already have a value.' : 'Review the preview before Apply.';
+  return 'Reads and writes may be temporarily unavailable while this change runs. ' + effects;
 }

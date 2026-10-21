@@ -1,0 +1,140 @@
+{
+  "definition": {
+    "schema": "history",
+    "name": "records",
+    "fields": [
+      {
+        "id": "44444444-4444-4444-8444-444444444444",
+        "name": "exact_value",
+        "position": 0,
+        "type": "bigint",
+        "options": {},
+        "nullable": true,
+        "unique": false,
+        "default": null
+      },
+      {
+        "id": "55555555-5555-4555-8555-555555555555",
+        "name": "moment_value",
+        "position": 1,
+        "type": "timestamp",
+        "options": {},
+        "nullable": true,
+        "unique": false,
+        "default": null
+      }
+    ]
+  },
+  "cases": [
+    {
+      "query": {
+        "filter[exact_value][gte]": "9007199254740993",
+        "sort": "exact_value",
+        "direction": "desc",
+        "limit": "10"
+      },
+      "options": {
+        "limit": 10,
+        "offset": 0,
+        "sort": "exact_value",
+        "direction": "DESC",
+        "filters": [
+          {
+            "kind": "comparison",
+            "field": {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "name": "exact_value",
+              "position": 0,
+              "type": "bigint",
+              "options": {},
+              "nullable": true,
+              "unique": false,
+              "default": null
+            },
+            "operator": "gte",
+            "value": "9007199254740993"
+          }
+        ]
+      },
+      "compiled": {
+        "text": "SELECT \"id\", \"exact_value\"::pg_catalog.text AS \"exact_value\", \"moment_value\" FROM ONLY \"history\".\"records\" AS \"runtime_row\" WHERE \"exact_value\" >= $1::pg_catalog.int8 ORDER BY \"runtime_row\".\"exact_value\" DESC NULLS LAST, \"runtime_row\".\"id\" ASC LIMIT $2 OFFSET $3",
+        "values": [
+          "9007199254740993",
+          11,
+          0
+        ]
+      }
+    },
+    {
+      "query": {
+        "filter[moment_value][lte]": "2024-02-29T23:59:59.123456+05:30"
+      },
+      "options": {
+        "limit": 25,
+        "offset": 0,
+        "sort": "id",
+        "direction": "ASC",
+        "filters": [
+          {
+            "kind": "comparison",
+            "field": {
+              "id": "55555555-5555-4555-8555-555555555555",
+              "name": "moment_value",
+              "position": 1,
+              "type": "timestamp",
+              "options": {},
+              "nullable": true,
+              "unique": false,
+              "default": null
+            },
+            "operator": "lte",
+            "value": "2024-02-29T23:59:59.123456+05:30"
+          }
+        ]
+      },
+      "compiled": {
+        "text": "SELECT \"id\", \"exact_value\"::pg_catalog.text AS \"exact_value\", \"moment_value\" FROM ONLY \"history\".\"records\" AS \"runtime_row\" WHERE \"moment_value\" <= $1::pg_catalog.timestamptz ORDER BY \"runtime_row\".\"id\" ASC NULLS LAST LIMIT $2 OFFSET $3",
+        "values": [
+          "2024-02-29T23:59:59.123456+05:30",
+          26,
+          0
+        ]
+      }
+    },
+    {
+      "query": {
+        "filter[exact_value][is_null]": "true"
+      },
+      "options": {
+        "limit": 25,
+        "offset": 0,
+        "sort": "id",
+        "direction": "ASC",
+        "filters": [
+          {
+            "kind": "null",
+            "field": {
+              "id": "44444444-4444-4444-8444-444444444444",
+              "name": "exact_value",
+              "position": 0,
+              "type": "bigint",
+              "options": {},
+              "nullable": true,
+              "unique": false,
+              "default": null
+            },
+            "operator": "is_null",
+            "isNull": true
+          }
+        ]
+      },
+      "compiled": {
+        "text": "SELECT \"id\", \"exact_value\"::pg_catalog.text AS \"exact_value\", \"moment_value\" FROM ONLY \"history\".\"records\" AS \"runtime_row\" WHERE \"exact_value\" IS NULL ORDER BY \"runtime_row\".\"id\" ASC NULLS LAST LIMIT $1 OFFSET $2",
+        "values": [
+          26,
+          0
+        ]
+      }
+    }
+  ]
+}

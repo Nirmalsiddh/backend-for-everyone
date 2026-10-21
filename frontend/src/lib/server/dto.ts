@@ -31,8 +31,8 @@ export function pick(value: unknown, keys: string[]) {
 export function projectDto(value: unknown) {
   return pick(value, projectKeys);
 }
-function fieldDto(value: unknown) {
-  const row = pick(value, fieldKeys);
+function fieldDto(value: unknown, draft = false) {
+  const row = pick(value, draft ? [...fieldKeys, 'backfillIntent'] : fieldKeys);
   if (row.relationship)
     row.relationship = pick(row.relationship, ['tableId', 'onDelete']);
   return row;
@@ -40,7 +40,7 @@ function fieldDto(value: unknown) {
 export function tableDto(value: unknown): unknown {
   const row = pick(value, tableKeys);
   if (row.indexes) row.indexes = (row.indexes as unknown[]).map((index) => pick(index, ['id', 'specificationVersion', 'fieldIds', 'unique']));
-  row.fields = (row.fields as unknown[]).map((f) => fieldDto(f));
+  row.fields = (row.fields as unknown[]).map((f) => fieldDto(f, true));
   if (row.appliedDefinition) {
     const d = (
       row.appliedDefinition as {

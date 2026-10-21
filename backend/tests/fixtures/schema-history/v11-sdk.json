@@ -1,0 +1,211 @@
+{
+  "snapshot": {
+    "project": {
+      "slug": "docs-project"
+    },
+    "blocked": false,
+    "resources": [
+      {
+        "name": "tasks",
+        "fields": [
+          {
+            "id": "internal-field-title",
+            "name": "title",
+            "type": "text",
+            "nullable": false,
+            "unique": false,
+            "default": null,
+            "options": {},
+            "position": 0
+          },
+          {
+            "id": "internal-field-done",
+            "name": "done",
+            "type": "boolean",
+            "nullable": false,
+            "unique": false,
+            "default": {
+              "kind": "literal",
+              "value": false
+            },
+            "options": {},
+            "position": 0
+          },
+          {
+            "id": "internal-field-owner_id",
+            "name": "owner_id",
+            "type": "uuid",
+            "nullable": false,
+            "unique": false,
+            "default": null,
+            "options": {},
+            "position": 0
+          }
+        ],
+        "operations": [
+          "list",
+          "get",
+          "create",
+          "update",
+          "delete"
+        ],
+        "policies": {
+          "list": {
+            "mode": "owner",
+            "ownerFieldId": "internal-field-owner_id",
+            "allowAdmin": false
+          },
+          "get": {
+            "mode": "owner",
+            "ownerFieldId": "internal-field-owner_id",
+            "allowAdmin": false
+          },
+          "create": {
+            "mode": "owner",
+            "ownerFieldId": "internal-field-owner_id",
+            "allowAdmin": false
+          },
+          "update": {
+            "mode": "owner",
+            "ownerFieldId": "internal-field-owner_id",
+            "allowAdmin": false
+          },
+          "delete": {
+            "mode": "owner",
+            "ownerFieldId": "internal-field-owner_id",
+            "allowAdmin": false
+          }
+        }
+      }
+    ],
+    "auth": {
+      "enabled": true,
+      "signupEnabled": true,
+      "provisioningStatus": "ready",
+      "sessionLifetimeSeconds": 86400
+    },
+    "tables": [
+      {
+        "id": "internal-table",
+        "appliedRevision": 1,
+        "applied": true,
+        "name": "tasks",
+        "fields": [
+          {
+            "id": "internal-field-title",
+            "name": "title",
+            "type": "text",
+            "nullable": false,
+            "unique": false,
+            "default": null,
+            "options": {},
+            "position": 0
+          },
+          {
+            "id": "internal-field-done",
+            "name": "done",
+            "type": "boolean",
+            "nullable": false,
+            "unique": false,
+            "default": {
+              "kind": "literal",
+              "value": false
+            },
+            "options": {},
+            "position": 0
+          },
+          {
+            "id": "internal-field-owner_id",
+            "name": "owner_id",
+            "type": "uuid",
+            "nullable": false,
+            "unique": false,
+            "default": null,
+            "options": {},
+            "position": 0
+          }
+        ]
+      }
+    ],
+    "workflows": [
+      {
+        "path": "place-order",
+        "dependencies": [
+          {
+            "tableId": "internal-table",
+            "appliedRevision": 1
+          }
+        ],
+        "definition": {
+          "input": {
+            "accepted": {
+              "type": "boolean",
+              "required": true
+            }
+          },
+          "auth": "authenticated",
+          "steps": [
+            {
+              "id": "internal-step",
+              "name": "condition",
+              "type": "condition",
+              "operator": "equals",
+              "left": {
+                "kind": "reference",
+                "source": "request",
+                "path": [
+                  "body",
+                  "accepted"
+                ]
+              },
+              "right": {
+                "kind": "literal",
+                "value": true
+              },
+              "then": [
+                {
+                  "id": "success-step",
+                  "name": "OK",
+                  "type": "response",
+                  "status": 201,
+                  "body": {
+                    "kind": "object",
+                    "fields": {
+                      "accepted": {
+                        "kind": "reference",
+                        "source": "request",
+                        "path": [
+                          "body",
+                          "accepted"
+                        ]
+                      }
+                    }
+                  }
+                }
+              ],
+              "else": [
+                {
+                  "id": "rejection-step",
+                  "name": "Rejected",
+                  "type": "response",
+                  "status": 409,
+                  "body": {
+                    "kind": "literal",
+                    "value": {
+                      "reason": "literal-secret-sentinel"
+                    }
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "contractHash": "f664ad4e0b687b0e0ecaabb90b822cfaff1970f36bf3f780527c85477724f822",
+  "tableRevisions": {
+    "tasks": 1
+  },
+  "sourceHash": "94518a25ac428a85d0d605c8fb67c7c04bd826d14ee09ece355fb59216b27b8c"
+}

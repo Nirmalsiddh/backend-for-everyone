@@ -13,7 +13,6 @@ import {
 } from '../../database/platform-db/schema.js';
 import { conflict, missing } from './errors.js';
 import { canonical, generatePlan } from './plan.js';
-import { needsEvolution } from './evolution.js';
 import { normalizeDraft, validateTargetSchema } from './validation.js';
 import type {
   DraftInput,
@@ -112,8 +111,9 @@ export class PostgresSchemaRepository implements SchemaRepository {
       ...table,
       indexes,
       applyStatus: applyStatus ?? null,
-      fields: fields.map(({ tableId: _tableId, relationship, ...field }) => ({
+      fields: fields.map(({ tableId: _tableId, relationship, backfillIntent, ...field }) => ({
         ...field,
+        ...(backfillIntent ? { backfillIntent } : {}),
         ...(relationship ? { relationship } : {}),
       })),
     };
@@ -214,7 +214,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
           updatedAt: new Date(),
         };
         const before = table.appliedDefinition?.definition;
-        const revertedEvolution = needsEvolution(table) && before && candidate.name === before.name &&
+        const revertedEvolution = before && candidate.name === before.name &&
           canonical(candidate.fields) === canonical(before.fields) && canonical(candidate.indexes) === canonical(before.indexes ?? []);
         if (!revertedEvolution) generatePlan(candidate, await this.managed(tx, projectId, ownerId));
         await tx
@@ -317,6 +317,7 @@ export class PostgresSchemaRepository implements SchemaRepository {
         table.draftRevision !== plan.revision
       )
         throw conflict('Migration state changed');
+      if (status === 'applied' && plan.version === 4) await tx.update(schemaFields).set({ backfillIntent: null }).where(eq(schemaFields.tableId, tableId));
       if (status === 'applied')
         await tx
           .update(schemaTables)

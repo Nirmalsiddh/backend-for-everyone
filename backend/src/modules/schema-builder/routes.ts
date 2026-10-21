@@ -44,6 +44,7 @@ const field = {
         onDelete: { const: 'restrict' },
       },
     },
+    backfillIntent: { type: 'object', additionalProperties: false, required: ['kind', 'value'], properties: { kind: { const: 'literal' }, value: {} } },
     nullable: { type: 'boolean' },
     unique: { type: 'boolean' },
     default: {

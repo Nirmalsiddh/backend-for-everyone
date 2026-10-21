@@ -1,3 +1,6 @@
+import { v4CatalogContext } from '../database/customer-db/default-catalog.js';
+import { generateEvolutionPlan } from '../modules/schema-builder/evolution.js';
+import { generateV4Plan } from '../modules/schema-builder/evolution-v4.js';
 import type { ManagedTable } from '../modules/schema-builder/types.js';
 import { SchemaError } from '../modules/schema-builder/errors.js';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -14,7 +17,6 @@ import { CredentialEncryption } from '../security/encryption.js';
 import { customerConnectionOptions } from '../security/customer-destination.js';
 import type { ConnectionConfig } from '../modules/database-connections/types.js';
 import {
-  generatePlan,
   generateLegacyPlan,
   canonical,
   quoteIdentifier,
@@ -116,7 +118,7 @@ export async function reconcile(
           ),
         );
       if (!operation) throw new Error('Active schema operation not found');
-      if (operation.planContext && ![2, 3].includes(operation.planContext.version))
+      if (operation.planContext && ![2, 3, 4].includes(operation.planContext.version))
         throw new Error('Unsupported schema operation format');
       const [table] = await db
         .select()
@@ -154,13 +156,14 @@ export async function reconcile(
           ),
         );
       const indexes = (await db.select().from(schemaIndexes).where(eq(schemaIndexes.tableId, table.id))).map(({ id, specificationVersion, fieldIds, unique }) => ({ id, specificationVersion, fieldIds, unique })).sort((a, b) => a.id.localeCompare(b.id));
-      const plan = (operation.planContext?.version === 3 ? generatePlan : generateLegacyPlan)(
+      const plan = (operation.planContext?.version === 4 ? generateV4Plan : operation.planContext?.version === 3 ? generateEvolutionPlan : generateLegacyPlan)(
         {
           ...table,
           indexes,
           fields: fields.map(
-            ({ tableId: _tableId, relationship, ...field }) => ({
+            ({ tableId: _tableId, relationship, backfillIntent, ...field }) => ({
               ...field,
+              ...(backfillIntent ? { backfillIntent } : {}),
               ...(relationship ? { relationship } : {}),
             }),
           ),
@@ -170,7 +173,7 @@ export async function reconcile(
       );
       if (
         plan.hash !== operation.planHash ||
-        (plan.version === 3 && canonical(plan.evolution) !== canonical(operation.planContext)) ||
+        ((plan.version === 3 || plan.version === 4) && canonical(plan.evolution) !== canonical(operation.planContext)) ||
         canonical(plan.definition) !== canonical(operation.definition)
       )
         throw new Error('Operation plan does not match durable metadata');
@@ -182,7 +185,7 @@ export async function reconcile(
         appliedDefinition: { definition: operation.definition, catalog: null },
       });
       actual = (await exists(table.name))
-        ? await inspect(table.name, postTables, plan.version === 3 ? { version: 3 } : table.appliedDefinition?.catalog)
+        ? await inspect(table.name, postTables, plan.version === 4 ? v4CatalogContext(plan) : plan.version === 3 ? ((table.appliedDefinition?.catalog as { version?: number })?.version === 4 ? table.appliedDefinition?.catalog : { version: 3 }) : table.appliedDefinition?.catalog)
         : null;
       const receipt =
         actual === null
@@ -244,6 +247,7 @@ export async function reconcile(
             current.planHash !== operation.planHash
           )
             throw new Error('Operation changed during inspection');
+          if (classification === 'POST_STATE' && plan.version === 4) await tx.update(schemaFields).set({ backfillIntent: null }).where(eq(schemaFields.tableId, table.id));
           if (classification === 'POST_STATE')
             await tx
               .update(schemaTables)

@@ -164,8 +164,7 @@ test('Schema Builder real PostgreSQL management lifecycle', async (t) => {
     const badFields = [fields.slice(1), fields.map((field, index) => index ? field : { ...field, name: 'renamed' }),
       fields.map((field, index) => index ? field : { ...field, type: 'integer' }),
       fields.map((field, index) => index ? field : { ...field, nullable: true }),
-      [...fields, { name: 'notes', type: 'text', nullable: false }], [...fields, { name: 'notes', type: 'text', unique: true }],
-      [...fields, { name: 'notes', type: 'text', default: { kind: 'literal', value: 'x' } }]];
+      [...fields, { name: 'notes', type: 'text', nullable: false }], [...fields, { name: 'notes', type: 'text', unique: true }]];
     for (const candidate of badFields) assert.equal((await app.inject({ method: 'PUT', url: `${tablePath}/draft`, headers: auth, payload: { name: 'products', fields: candidate, expectedDraftRevision: 2 } })).statusCode, 409);
     assert.equal((await app.inject({ method: 'PUT', url: `${tablePath}/draft`, headers: auth, payload: { name: 'renamed', fields, expectedDraftRevision: 2 } })).statusCode, 409);
     const updated = await app.inject({ method: 'PUT', url: `${tablePath}/draft`, headers: auth, payload: { name: 'products', fields: [...fields, { name: 'notes', type: 'text' }], expectedDraftRevision: 2 } });
@@ -196,7 +195,7 @@ test('Schema Builder real PostgreSQL management lifecycle', async (t) => {
     const publicState=await service.get(project.id,ownerId,draft.id);
     assert.equal(publicState.applyStatus?.status,'failed');
     assert.equal(publicState.applyStatus?.errorCode,'SCHEMA_APPLY_FAILED');
-    assert.ok(!JSON.stringify(publicState).includes('catalog')); 
+    assert.ok(!JSON.stringify(publicState).includes('catalog'));
     await repository.delete(project.id, ownerId, draft.id);
   });
   await t.test('drift and existing tables block apply without adoption', async () => {

@@ -1,3 +1,4 @@
+import { normalizeManagedDefault, expectedDefault, type DefaultField } from './default-catalog.js';
 import { catalog } from './catalog.js';
 import type { SchemaClient } from './schema-executor.js';
 import type { Definition, ManagedTable } from '../../modules/schema-builder/types.js';
@@ -8,8 +9,8 @@ export function catalogVersion(value: unknown): number {
   return value && typeof value === 'object' && 'version' in value ? Number(value.version) : 1;
 }
 // Legacy readers are deliberately untouched, including their exact index/FK serialization.
-export async function readCatalog(client: SchemaClient, schema: string, table: string, tables: ManagedTable[] = [], expected?: unknown) {
-  if (![1, 2, 3].includes(catalogVersion(expected))) throw conflict('Unsupported applied catalog version');
+async function readLegacyOrV3Catalog(client: SchemaClient, schema: string, table: string, tables: ManagedTable[] = [], expected?: unknown) {
+  if (![1, 2, 3, 4].includes(catalogVersion(expected))) throw conflict('Unsupported applied catalog version');
   if (catalogVersion(expected) !== 3) return catalog(client, schema, table, tables);
   const legacy = await catalog(client, schema, table, tables);
   const collations = (await client.query(`SELECT a.attname, CASE WHEN co.oid IS NULL THEN NULL ELSE cn.nspname || '.' || co.collname END AS collation
@@ -38,8 +39,35 @@ export async function readCatalog(client: SchemaClient, schema: string, table: s
     indexes: indexes.map((index) => ({ ...index, category: String(index.name).startsWith('ix_usr_') ? 'user' : String(index.name).startsWith('ix_fk_') ? 'relationship' : index.constraint ? 'constraint' : 'external' })),
   };
 }
+export async function readCatalog(client: SchemaClient, schema: string, table: string, tables: ManagedTable[] = [], expected?: unknown) {
+  if (catalogVersion(expected) === 4) {
+    const base = await readLegacyOrV3Catalog(client, schema, table, tables, { version: 3 });
+    const descriptors = (expected as { managedDefaultFields: DefaultField[] }).managedDefaultFields;
+    if (!Array.isArray(descriptors)) throw conflict('Invalid v4 managed catalog');
+    return { ...base, version: 4, managedDefaultFields: descriptors,
+      columns: base.columns.map((column: Record<string, unknown>) => {
+        const descriptor = descriptors.find((field) => field.name === column.attname);
+        return descriptor ? { ...column, default_value: normalizeManagedDefault(column.default_value, descriptor) } : column;
+      }) };
+  }
+  return readLegacyOrV3Catalog(client, schema, table, tables, expected);
+}
 export function verifyPostCatalog(snapshot: Awaited<ReturnType<typeof readCatalog>>, definition: Definition) {
-  if (catalogVersion(snapshot) !== 3) return;
+  if (![3, 4].includes(catalogVersion(snapshot))) return;
+  if (catalogVersion(snapshot) === 4) {
+    const columns = snapshot.columns as Record<string, unknown>[];
+    if (columns.length !== definition.fields.length + 1 || columns[0]?.attname !== 'id') throw conflict('Post-Apply columns do not match managed metadata');
+    for (const field of definition.fields) {
+      const column = columns.find((candidate) => candidate.attname === field.name);
+      const type = field.type === 'varchar' ? `character varying(${field.options.length})` : field.type === 'decimal' ? `numeric(${field.options.precision},${field.options.scale})` : field.type === 'timestamp' ? 'timestamp with time zone' : field.type;
+      if (!column || column.type !== type || column.attidentity !== '' || column.attgenerated !== '') throw conflict('Post-Apply column type does not match managed metadata');
+    }
+    for (const descriptor of (snapshot as { managedDefaultFields?: DefaultField[] }).managedDefaultFields ?? []) {
+      const field = definition.fields.find((candidate) => candidate.name === descriptor.name);
+      const column = (snapshot.columns as Record<string, unknown>[]).find((candidate) => candidate.attname === descriptor.name);
+      if (!field || !column || canonical(column.default_value) !== canonical(expectedDefault(field))) throw conflict('Post-Apply managed default does not match metadata');
+    }
+  }
   const indexes = snapshot.indexes as Record<string, unknown>[];
   for (const field of definition.fields) if ((snapshot.columns as Record<string, unknown>[]).find((column) => column.attname === field.name)?.attnotnull !== !field.nullable)
     throw conflict('Post-Apply requiredness does not match managed metadata');

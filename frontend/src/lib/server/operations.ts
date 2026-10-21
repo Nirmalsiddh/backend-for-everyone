@@ -91,7 +91,7 @@ export const operations: Operation[] = [
   rule(
     `schema/tables/${uuid}/preview`,
     ['POST'],
-    keys(['planHash', 'draftRevision', 'operation', 'sql', 'relationships', 'actions']),
+    keys(['planHash', 'draftRevision', 'operation', 'sql', 'relationships', 'actions', 'version']),
   ),
   rule(`schema/tables/${uuid}/apply`, ['POST'], (d) => ({
     ...pick(d, ['migrationId', 'status']),

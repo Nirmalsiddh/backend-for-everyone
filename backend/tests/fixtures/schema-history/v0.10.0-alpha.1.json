@@ -1,0 +1,436 @@
+{
+  "tag": "v0.10.0-alpha.1",
+  "commit": "750a6b9843085631da0082ac26d525f352a86182",
+  "fixtures": [
+    {
+      "name": "legacy_nullable_add",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          },
+          {
+            "id": "66666666-6666-4666-8666-666666666666",
+            "name": "notes",
+            "position": 1,
+            "type": "text",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "tables": [],
+      "hash": "53963df61bb5a2ee63040ed330942a9e8dc0b86357b87beb0eedbd839634dacc",
+      "version": 1,
+      "definition": {
+        "schema": "history",
+        "name": "records",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          },
+          {
+            "id": "66666666-6666-4666-8666-666666666666",
+            "name": "notes",
+            "position": 1,
+            "type": "text",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          }
+        ]
+      },
+      "statements": [
+        "ALTER TABLE \"history\".\"records\" ADD COLUMN \"notes\" pg_catalog.text;"
+      ]
+    },
+    {
+      "name": "relationships",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          },
+          {
+            "id": "77777777-7777-4777-8777-777777777777",
+            "name": "parent_id",
+            "position": 1,
+            "type": "uuid",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null,
+            "relationship": {
+              "tableId": "55555555-5555-4555-8555-555555555555",
+              "onDelete": "restrict"
+            }
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "tables": [
+        {
+          "projectId": "22222222-2222-4222-8222-222222222222",
+          "connectionId": "33333333-3333-4333-8333-333333333333",
+          "id": "55555555-5555-4555-8555-555555555555",
+          "appliedRevision": 1,
+          "appliedPhysicalRevision": 1,
+          "appliedDefinition": {
+            "definition": {
+              "schema": "history",
+              "name": "parents",
+              "fields": []
+            },
+            "catalog": {}
+          }
+        }
+      ],
+      "hash": "55d09b9b3c4b62ba91941de99dcc891a73ff87237e0f1268ca0bbe2f66782ec7",
+      "version": 2,
+      "definition": {
+        "schema": "history",
+        "name": "records",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          },
+          {
+            "id": "77777777-7777-4777-8777-777777777777",
+            "name": "parent_id",
+            "position": 1,
+            "type": "uuid",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null,
+            "relationship": {
+              "tableId": "55555555-5555-4555-8555-555555555555",
+              "onDelete": "restrict"
+            }
+          }
+        ]
+      },
+      "statements": [
+        "ALTER TABLE \"history\".\"records\" ADD COLUMN \"parent_id\" pg_catalog.uuid;",
+        "ALTER TABLE \"history\".\"records\" ADD CONSTRAINT \"fk_77777777777747778777777777777777\" FOREIGN KEY (\"parent_id\") REFERENCES \"history\".\"parents\" (\"id\") ON DELETE RESTRICT ON UPDATE NO ACTION NOT DEFERRABLE;",
+        "CREATE INDEX \"ix_fk_77777777777747778777777777777777\" ON \"history\".\"records\" USING btree (\"parent_id\");"
+      ]
+    },
+    {
+      "name": "requiredness",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": false,
+            "unique": false,
+            "default": null
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        }
+      },
+      "tables": [],
+      "hash": "93c0cb5882feb6da55d90db5bf0d5082bb22f8456061a59e006c94be19bb3608",
+      "version": 3,
+      "definition": {
+        "schema": "history",
+        "name": "records",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": false,
+            "unique": false,
+            "default": null
+          }
+        ],
+        "indexes": []
+      },
+      "statements": [
+        "ALTER TABLE \"history\".\"records\" ALTER COLUMN \"value_key\" SET NOT NULL;"
+      ],
+      "evolution": {
+        "version": 3,
+        "dependencies": [],
+        "actions": [
+          {
+            "kind": "set_not_null",
+            "fieldId": "44444444-4444-4444-8444-444444444444"
+          }
+        ],
+        "contractChange": true,
+        "before": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        },
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1
+      }
+    },
+    {
+      "name": "normal_index",
+      "table": {
+        "id": "11111111-1111-4111-8111-111111111111",
+        "projectId": "22222222-2222-4222-8222-222222222222",
+        "connectionId": "33333333-3333-4333-8333-333333333333",
+        "schemaName": "history",
+        "name": "records",
+        "draftRevision": 2,
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1,
+        "createdAt": "1970-01-01T00:00:00.000Z",
+        "updatedAt": "1970-01-01T00:00:00.000Z",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          }
+        ],
+        "appliedDefinition": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        },
+        "indexes": [
+          {
+            "id": "88888888-8888-4888-8888-888888888888",
+            "specificationVersion": 1,
+            "fieldIds": [
+              "44444444-4444-4444-8444-444444444444"
+            ],
+            "unique": false
+          }
+        ]
+      },
+      "tables": [],
+      "hash": "325e260821a6f3719c9dd6ca65c06e846ce8d45100889cc55898ff5d0b1ba3ab",
+      "version": 3,
+      "definition": {
+        "schema": "history",
+        "name": "records",
+        "fields": [
+          {
+            "id": "44444444-4444-4444-8444-444444444444",
+            "name": "value_key",
+            "position": 0,
+            "type": "integer",
+            "options": {},
+            "nullable": true,
+            "unique": false,
+            "default": null
+          }
+        ],
+        "indexes": [
+          {
+            "id": "88888888-8888-4888-8888-888888888888",
+            "specificationVersion": 1,
+            "fieldIds": [
+              "44444444-4444-4444-8444-444444444444"
+            ],
+            "unique": false
+          }
+        ]
+      },
+      "statements": [
+        "CREATE INDEX \"ix_usr_88888888888848888888888888888888\" ON \"history\".\"records\" USING btree (\"value_key\");"
+      ],
+      "evolution": {
+        "version": 3,
+        "dependencies": [],
+        "actions": [
+          {
+            "kind": "create_index",
+            "index": {
+              "id": "88888888-8888-4888-8888-888888888888",
+              "specificationVersion": 1,
+              "fieldIds": [
+                "44444444-4444-4444-8444-444444444444"
+              ],
+              "unique": false
+            }
+          }
+        ],
+        "contractChange": false,
+        "before": {
+          "definition": {
+            "schema": "history",
+            "name": "records",
+            "fields": [
+              {
+                "id": "44444444-4444-4444-8444-444444444444",
+                "name": "value_key",
+                "position": 0,
+                "type": "integer",
+                "options": {},
+                "nullable": true,
+                "unique": false,
+                "default": null
+              }
+            ]
+          },
+          "catalog": {}
+        },
+        "appliedRevision": 1,
+        "appliedPhysicalRevision": 1
+      }
+    }
+  ]
+}
