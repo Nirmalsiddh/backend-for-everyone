@@ -219,3 +219,46 @@ fieldset:disabled {
   background: transparent;
   min-width: 0;
 }
+
+/* Scoped to the Taskforge preview. */
+.guided-builder {
+  max-width: 760px;
+  line-height: 1.6;
+}
+.guided-builder nav ol {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  list-style: none;
+  padding: 0;
+}
+.guided-builder [aria-current='step'] {
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.guided-builder dt {
+  font-weight: 600;
+}
+.guided-builder dd {
+  margin: 0 0 12px;
+}
+.guided-builder label.check,
+.guided-builder button,
+.guided-builder a {
+  min-height: 44px;
+}
+.guided-builder a {
+  display: inline-flex;
+  align-items: center;
+}
+.guided-builder input[type='checkbox'] {
+  width: 20px;
+  height: 20px;
+  margin-right: 8px;
+}
+.guided-builder :focus-visible,
+.guided-builder h1:focus {
+  outline: 3px solid #164eaa;
+  outline-offset: 4px;
+}
