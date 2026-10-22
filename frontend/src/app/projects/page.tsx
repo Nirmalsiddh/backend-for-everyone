@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { ProjectSlugField, isProjectSlugConflict } from '@/components/project-slug-field';
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useForm } from 'react-hook-form';
@@ -55,6 +56,7 @@ export default function Projects() {
         <h2>Create project</h2>
         <DirtyGuard dirty={formState.isDirty} />
         <form
+          autoComplete="off"
           onSubmit={handleSubmit((v) =>
             action.run(
               () => api<Project>('projects', 'POST', input.parse(v)),
@@ -68,22 +70,16 @@ export default function Projects() {
           <div className="row">
             <label>
               Name
-              <input {...register('name')} required maxLength={100} />
+              <input {...register('name')} autoComplete="off" required maxLength={100} />
             </label>
-            <label>
-              Slug
-              <input
-                {...register('slug', { onChange: () => setSlugEdited(true) })}
-                required
-                pattern="[a-z][a-z0-9]*(-[a-z0-9]+)*"
-                minLength={3}
-                maxLength={63}
-              />
-            </label>
+            <ProjectSlugField
+              registration={register('slug', { onChange: () => setSlugEdited(true) })}
+              error={action.error}
+            />
           </div>
           <button disabled={action.busy}>Create project</button>
         </form>
-        <ActionState action={action} />
+        <ActionState action={{ ...action, error: isProjectSlugConflict(action.error) ? null : action.error }} />
       </section>
       <h2 className="project-list-heading">Your projects</h2>
       <State query={query}>

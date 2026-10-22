@@ -226,3 +226,29 @@ test('project listing is authenticated, bounded, owner scoped, and paginated', a
     assert.equal(typeof response.headers['x-request-id'], 'string');
   }
 });
+
+
+test('slugs are global across owners while display names may repeat', async (t) => {
+  const repository = memoryRepository();
+  await repository.create(ownerId, { name: 'Demo project', slug: 'demo-project' });
+  const app = buildApp({
+    platformAuthRepository: memoryPlatformAuthRepository(otherOwnerId),
+    env,
+    projectRepository: repository,
+    logger: false,
+  });
+  t.after(() => app.close());
+  const duplicate = await app.inject({
+    method: 'POST', url: '/internal/projects', headers: auth,
+    payload: { name: 'Demo project', slug: 'demo-project' },
+  });
+  assert.equal(duplicate.statusCode, 409);
+  assert.equal(duplicate.json().code, 'SLUG_UNAVAILABLE');
+  const distinct = await app.inject({
+    method: 'POST', url: '/internal/projects', headers: auth,
+    payload: { name: 'Demo project', slug: 'demo-project-2' },
+  });
+  assert.equal(distinct.statusCode, 201);
+  assert.equal(distinct.json().name, 'Demo project');
+  assert.equal(distinct.json().ownerId, otherOwnerId);
+});
