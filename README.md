@@ -4,6 +4,10 @@ See [Safer schema evolution](SAFE_SCHEMA_EVOLUTION.md) for the v0.12 applied-fie
 
 A PostgreSQL-backed API builder, with a management API foundation, encrypted customer PostgreSQL connection management, a Schema Builder MVP, predefined runtime APIs, customer-owned end-user authentication, and custom transactional workflows. Customer application data will remain in customer-owned databases; platform PostgreSQL stores management metadata only.
 
+## Taskforge prototype — Backend for Everyone
+
+For the focused beginner Task Manager experience, start with [Taskforge local run instructions, demo script and submission draft](TASKFORGE.md). It reuses the pre-existing backend platform; the guided hackathon path intentionally excludes advanced platform features.
+
 ## v0.11.0-alpha.1 — TypeScript Client & Types Generation MVP
 
 Project Docs can generate a standalone, dependency-free TypeScript runtime client

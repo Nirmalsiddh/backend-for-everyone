@@ -51,6 +51,10 @@ test('builder renders fixed template, labelled fields/actions and checked defaul
   }
   assert.match(html, /<fieldset><legend>What should your app be able to do\?/);
   assert.match(html, /href="\/projects\/demo\/database"/);
+  assert.match(html, /aria-describedby="continue-help"/);
+  assert.match(html, /Checking your saved settings before you continue/);
+  assert.match(html, /4\. Ready/);
+  assert.match(html, /Built your frontend/);
   const choices = guidedReducer(initialGuidedState, { type: 'toggle', action: 'delete', checked: false });
   assert.equal(guidedReducer(guidedReducer(choices, { type: 'continue' }), { type: 'back' }).actions.delete, false);
 });

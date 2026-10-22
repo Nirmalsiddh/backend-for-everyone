@@ -220,8 +220,11 @@ fieldset:disabled {
   min-width: 0;
 }
 
-/* Scoped to the Taskforge preview. */
+/* Scoped to the Taskforge Guided Builder. */
 .guided-builder {
+  min-width: 0;
+  font-size: 16px;
+  overflow-wrap: anywhere;
   max-width: 760px;
   line-height: 1.6;
 }
@@ -261,4 +264,95 @@ fieldset:disabled {
 .guided-builder h1:focus {
   outline: 3px solid #164eaa;
   outline-offset: 4px;
+}
+
+.guided-builder fieldset {
+  min-width: 0;
+}
+.guided-builder .guided-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+.guided-builder .guided-summary section {
+  margin: 0;
+}
+.guided-builder .guided-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.guided-builder .guided-link-button {
+  padding: 10px 16px;
+  border: 1px solid #164eaa;
+  border-radius: 4px;
+  background: #164eaa;
+  color: white;
+  font-weight: 600;
+}
+.guided-builder .guided-link-button.secondary {
+  background: white;
+  color: #164eaa;
+}
+.guided-builder button {
+  max-width: 100%;
+}
+.guided-builder button:disabled {
+  opacity: 1;
+  color: #526179;
+  background: #edf1f7;
+  border-color: #a7b2c3;
+  cursor: not-allowed;
+}
+.guided-builder summary {
+  cursor: pointer;
+  min-height: 44px;
+  padding: 8px 0;
+}
+.guided-builder pre {
+  min-width: 0;
+  max-width: 100%;
+  white-space: pre;
+  overflow-x: auto;
+  font-size: 14px;
+}
+.guided-builder dialog pre {
+  white-space: pre-wrap;
+}
+@media (max-width: 600px) {
+  .guided-builder .guided-summary {
+    grid-template-columns: 1fr;
+  }
+  .guided-builder .guided-actions > a {
+    width: 100%;
+  }
+  .guided-builder nav ol {
+    gap: 8px 16px;
+  }
+}
+/* Let code scroll inside the guided page instead of widening its grid track. */
+.shell:has(.guided-builder) > main {
+  min-width: 0;
+}
+.shell:has(.guided-builder) aside a {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+.shell:has(.guided-builder) aside a:focus-visible {
+  outline: 3px solid #164eaa;
+  outline-offset: 2px;
+}
+.guided-builder section section {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+
+.guided-builder h2 {
+  margin-top: 0;
+  font-size: 1.25rem;
+}
+.guided-builder label.check {
+  font-size: 16px;
 }
