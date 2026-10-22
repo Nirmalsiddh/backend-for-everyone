@@ -115,112 +115,151 @@ export function GuidedBuilder({ projectId }: { projectId: string }) {
 
   return (
     <div className="guided-builder">
-      <p className="badge">Backend for Everyone</p>
-      <nav aria-label="Builder progress">
+      <p className="guided-eyebrow">Backend for Everyone</p>
+      <nav className="guided-progress" aria-label="Builder progress">
         <ol>
-          {(['build', 'review', 'creating', 'ready'] as const).map((view, index) => (
-            <li key={view} aria-current={state.view === view ? 'step' : undefined}>
-              {index + 1}. {view === 'build' ? 'Build' : view === 'review' ? 'Review' : view === 'creating' ? 'Creating' : 'Ready'}
-            </li>
-          ))}
+          {(['build', 'review', 'creating', 'ready'] as const).map((view, index, steps) => {
+            const completed = index < steps.indexOf(state.view);
+            return (
+              <li key={view} data-completed={completed} aria-current={state.view === view ? 'step' : undefined}>
+                <span className="guided-step-number" aria-hidden="true">{completed ? '✓' : index + 1}</span>
+                <span><span className="guided-sr-only">{index + 1}. </span>{view === 'build' ? 'Build' : view === 'review' ? 'Review' : view === 'creating' ? 'Create' : 'Ready'}{completed && <span className="guided-sr-only"> — completed</span>}</span>
+              </li>
+            );
+          })}
         </ol>
       </nav>
-      <h1 ref={heading} tabIndex={-1}>{title}</h1>
-      {error && <div role="alert"><p>{error}</p><p>Setup has stopped. No automatic retry will run.</p></div>}
-      {check && (check.kind === 'missing' || check.kind === 'blocked') && <p role="alert">{check.message}</p>}
-      {(error || check?.kind === 'blocked') && <p><a href={`${base}/schema`}>Review Tables &amp; fields</a> · <a href={`${base}/apis`}>Review APIs</a></p>}
+      <div className={`guided-heading${state.view === 'ready' ? ' guided-success' : ''}`}>
+        <h1 ref={heading} tabIndex={-1}>{title}</h1>
+        {state.view === 'build' && <p>Built your frontend? Choose what your Task Manager needs. We’ll handle the backend setup.</p>}
+        {state.view === 'review' && <p>Check everything before we create it.</p>}
+        {state.view === 'creating' && <p>Keep this page open while we finish the setup.</p>}
+        {state.view === 'ready' && <p role="status">Your Task Manager backend is configured and ready to use.</p>}
+      </div>
+      {(error || check?.kind === 'missing' || check?.kind === 'blocked') && (
+        <div className="guided-notice" role="alert">
+          <strong>Setup needs attention</strong>
+          {error && <><p>{error}</p><p>Setup has stopped. No automatic retry will run.</p></>}
+          {check && (check.kind === 'missing' || check.kind === 'blocked') && <p>{check.message}</p>}
+          {(error || check?.kind === 'blocked') && <div className="guided-actions"><a href={`${base}/schema`}>Review Tables &amp; fields</a><a href={`${base}/apis`}>Review APIs</a></div>}
+          {check?.kind === 'missing' && <a href={`${base}/database`}>Connect database</a>}
+        </div>
+      )}
       {state.view === 'build' ? (
         <>
-          <p>Built your frontend? Give it a backend without writing a server, routes or database queries. Start with a few simple choices.</p>
-          <section aria-labelledby="template-heading">
-            <h2 id="template-heading">What are you building?</h2>
-            <p><strong>Task Manager</strong> — the template for this guided setup.</p>
+          <section className="guided-template" aria-labelledby="template-heading">
+            <h2 id="template-heading">Task Manager template</h2>
+            <p>A simple place to keep track of tasks and deadlines.</p>
           </section>
-          <section aria-labelledby="fields-heading">
-            <h2 id="fields-heading">What information should your app store?</h2>
-            <dl>{taskFields.map((field) => (
-              <div key={field.label}><dt>{field.label}</dt><dd>{field.description}</dd></div>
+          <section className="guided-information" aria-labelledby="fields-heading">
+            <h2 id="fields-heading">Task information</h2>
+            <dl className="guided-field-grid">{taskFields.map((field) => (
+              <div key={field.label}>
+                <dt><span>{field.label}</span><span className="guided-meta">{field.label === 'Title' ? 'Required' : field.label === 'Completed' ? 'Starts unfinished' : 'Optional'}</span></dt>
+                <dd>{field.description}</dd>
+              </div>
             ))}</dl>
           </section>
           <form onSubmit={(event) => { event.preventDefault(); dispatch({ type: 'continue' }); }}>
-            <fieldset>
-              <legend>What should your app be able to do?</legend>
-              {taskActions.map((action) => (
-                <label className="check" key={action.id} htmlFor={`task-${action.id}`}>
+            <fieldset><legend>What should your app be able to do?</legend>
+              <div className="guided-choice-grid">{taskActions.map((action) => (
+                <label className="guided-choice" key={action.id} htmlFor={`task-${action.id}`}>
                   <input id={`task-${action.id}`} type="checkbox" checked={state.actions[action.id]}
+                    aria-labelledby={`task-${action.id}-label`} aria-describedby={`task-${action.id}-description`}
                     onChange={(event) => dispatch({ type: 'toggle', action: action.id, checked: event.target.checked })} />
-                  {action.label}
+                  <span><span className="guided-choice-title" id={`task-${action.id}-label`}>{action.label}</span>
+                    <small id={`task-${action.id}-description`}>{({ create: 'Add new tasks', view: 'See saved tasks', edit: 'Change existing tasks', delete: 'Remove tasks' })[action.id]}</small>
+                  </span>
                 </label>
-              ))}
+              ))}</div>
             </fieldset>
-            <section aria-labelledby="database-heading">
-              <h2 id="database-heading">Database setup</h2>
-              {!check && !error && <p role="status">Checking saved project settings…</p>}
-              {check?.kind === 'clean' && <p>✓ Saved database connection found. Your database must allow task storage and actions to be created.</p>}
+            <section className="guided-prerequisite" aria-labelledby="database-heading">
+              <div><h2 id="database-heading">Database</h2>
+                {!check && !error && <p role="status">Checking saved project settings…</p>}
+                {check?.kind === 'clean' && <p>✓ Saved connection found</p>}
+                {check?.kind === 'missing' && <p>Connection required</p>}
+                {check?.kind === 'blocked' && <p>Configuration needs attention</p>}
+                {error && <p>Could not confirm saved settings</p>}
+              </div>
               <a href={`${base}/database`}>Open Database Settings</a>
             </section>
-            <p id="continue-help" className="muted">{continueHelp}</p>
-            <button type="submit" disabled={!canCreate} aria-describedby="continue-help">Continue</button>
+            <div className="guided-footer">
+              <p id="continue-help" className="guided-supporting">{continueHelp}</p>
+              <button type="submit" disabled={!canCreate} aria-describedby="continue-help">Continue <span aria-hidden="true">→</span></button>
+            </div>
           </form>
         </>
       ) : state.view === 'creating' ? (
-        <section aria-label="Setup progress"><p role="status" aria-live="polite">{progress}</p><p>Please keep this page open. We’re creating task storage and turning on your selected actions.</p></section>
+        <section className="guided-panel guided-process" aria-label="Setup progress">
+          <span className="guided-process-mark" aria-hidden="true">···</span>
+          <p role="status" aria-live="polite">{progress}</p>
+          <p className="guided-supporting">We’re preparing task storage and your selected actions.</p>
+        </section>
       ) : state.view === 'review' ? (
         <>
-          <section aria-labelledby="data-heading">
-            <h2 id="data-heading">Your Task Manager will store</h2>
-            <ul>{taskFields.map((field) => <li key={field.label}>{field.summary}</li>)}</ul>
+          <section className="guided-panel guided-review" aria-label="Backend summary">
+            <div className="guided-review-columns">
+              <div><h2>Data</h2><ul>{taskFields.map((field) => <li key={field.label}>{field.summary}</li>)}</ul></div>
+              <div><h2>Actions</h2><ul>{selected.map((action) => <li key={action.id}>✓ {action.label}</li>)}</ul></div>
+            </div>
+            <div className="guided-review-database"><h2>Database</h2><p>{check?.kind === 'clean' ? '✓ Saved connection found' : continueHelp}</p><a href={`${base}/database`}>Database settings</a></div>
           </section>
-          <section aria-labelledby="actions-heading">
-            <h2 id="actions-heading">Users will be able to</h2>
-            <ul>{selected.map((action) => <li key={action.id}>{action.label}</li>)}</ul>
-          </section>
-          <p>This will create Tasks storage and enable the selected actions in your connected database. It will not create an API key automatically.</p>
-          <button type="button" className="secondary" onClick={() => dispatch({ type: 'back' })}>Back</button>
-          <p id="create-help" className="muted">{canCreate ? 'Ready to create. Your choices will now be applied to your database.' : continueHelp}</p>
-          <button type="button" disabled={!canCreate} aria-describedby="create-help" onClick={() => void create()}>Create Backend</button>
-          <p><a href={`${base}/database`}>Database settings</a></p>
+          <p className="guided-supporting">This creates Tasks storage and your selected actions. An API key is created separately.</p>
+          <div className="guided-footer">
+            <p id="create-help" className="guided-supporting">{canCreate ? 'Ready to create. Your choices will now be applied to your database.' : continueHelp}</p>
+            <div className="guided-actions guided-review-actions">
+              <button type="button" className="secondary" onClick={() => dispatch({ type: 'back' })}>Back</button>
+              <button type="button" disabled={!canCreate} aria-describedby="create-help" onClick={() => void create()}>Create Backend</button>
+            </div>
+          </div>
         </>
       ) : ready ? (
         <>
-          <p role="status">Your Task Manager backend is ready to use. Backend configured ✓</p>
-          <div className="guided-summary">
-            <section><h2>Data</h2><p>✓ Tasks storage ready</p></section>
-            <section><h2>Available actions</h2><ul>{enabledLabels.map((action) => <li key={action.id}>✓ {action.label}</li>)}</ul></section>
+          <div className="guided-ready-summary">
+            <div><h2>Tasks storage</h2><p>✓ Ready</p></div>
+            <div><h2>Available actions</h2><ul>{enabledLabels.map((action) => <li key={action.id}>{action.label}</li>)}</ul></div>
           </div>
-          <section aria-labelledby="api-heading">
+          <section className="guided-api" aria-labelledby="api-heading">
             <h2 id="api-heading">API address</h2>
-            <RuntimeUrl slug={ready.project.slug} />
-            <details><summary>View endpoint list</summary>
+            <div className="guided-url"><RuntimeUrl slug={ready.project.slug} /></div>
+            <details className="guided-endpoints"><summary>Endpoint details</summary>
               <ul>{operations.map((operation) => (
                 <li key={operation}><code>{({ create: 'POST', list: 'GET', get: 'GET', update: 'PATCH', delete: 'DELETE' } as const)[operation]} /tasks{['get', 'update', 'delete'].includes(operation) ? '/:id' : ''}</code></li>
               ))}</ul>
             </details>
           </section>
-          <section aria-labelledby="key-heading">
-            <h2 id="key-heading">1. Get a demo key</h2>
-            <p>This key is shown once. Copy it now. Keep write-enabled keys private; do not publish them in a public frontend.</p>
-            <button type="button" disabled={keyAttempted || keyBusy} onClick={() => void createKey()}>Create demo API key</button>
-            {keyBusy && <p role="status">Creating demo key…</p>}
-            {keyAttempted && !keyBusy && !keyError && !secret && <p role="status">Key created and cleared from this page. If you need another key, use API keys.</p>}
-            {keyError && <p role="alert">{keyError}</p>}
-            <p><a href={`${base}/keys`}>Manage API keys</a></p>
-          </section>
-          <section aria-labelledby="test-heading">
-            <h2 id="test-heading">2. Test a task</h2>
-            <p>Your backend is configured. In Playground, choose API key and paste your key into Runtime credential. Create a task, then view the list to test it.</p>
-            <div className="guided-actions">
-              {operations.includes('create') && <a className="guided-link-button" href={`${base}/playground?target=table:${ready.endpoint.id}:create`}>Test Create Task</a>}
-              {operations.includes('list') && <a className="guided-link-button secondary" href={`${base}/playground?target=table:${ready.endpoint.id}:list`}>Test View Tasks</a>}
-            </div>
-            <p><a href={`${base}/playground`}>Open Playground</a></p>
+          <section className="guided-panel guided-next" aria-labelledby="next-heading">
+            <h2 id="next-heading">Next steps</h2>
+            <ol>
+              <li><span className="guided-next-number" aria-hidden="true">1</span><div>
+                <h3>Get a demo key</h3>
+                <p>This key is shown once. Copy it now. Keep write-enabled keys private; do not publish them in a public frontend.</p>
+                <button type="button" disabled={keyAttempted || keyBusy} onClick={() => void createKey()}>Create demo API key</button>
+                {keyBusy && <p role="status">Creating demo key…</p>}
+                {keyAttempted && !keyBusy && !keyError && !secret && <p role="status">Key created and cleared from this page. If you need another key, use API keys.</p>}
+                {keyError && <p className="guided-notice" role="alert">{keyError}</p>}
+                <p><a href={`${base}/keys`}>Manage API keys</a></p>
+              </div></li>
+              <li><span className="guided-next-number" aria-hidden="true">2</span><div>
+                <h3>Test your API</h3>
+                <p>In Playground, choose API key and paste your key into Runtime credential. Create a task, then view the list to test it.</p>
+                <div className="guided-actions">
+                  {operations.includes('create') && <a className="guided-link-button" href={`${base}/playground?target=table:${ready.endpoint.id}:create`}>Test Create Task</a>}
+                  {operations.includes('list') && <a className="guided-link-button secondary" href={`${base}/playground?target=table:${ready.endpoint.id}:list`}>Test View Tasks</a>}
+                </div>
+                <p><a href={`${base}/playground`}>Open Playground</a></p>
+              </div></li>
+              {(operations.includes('create') || operations.includes('list')) && <li><span className="guided-next-number" aria-hidden="true">3</span><div>
+                <h3>Connect your app</h3>
+                <details className="guided-code"><summary>JavaScript example</summary>
+                  <p>Use this example in a controlled demo or trusted server. Replace the key placeholder privately; never publish a write key in a public frontend.</p>
+                  {example ? <><div className="guided-code-toolbar"><span>JavaScript</span><CopyButton text={example} label="Copy fetch example" /></div><pre tabIndex={0} aria-label="JavaScript integration example"><code>{example}</code></pre></> : <p>The public API address is unavailable. Check the dashboard runtime origin settings.</p>}
+                </details>
+              </div></li>}
+            </ol>
           </section>
           {secret && <SecretDialog secret={secret} onClose={() => setSecret('')} />}
-          {(operations.includes('create') || operations.includes('list')) && <section><h2>3. Connect your app</h2>
-            <p>Copy this fetch example for a controlled demo or trusted server. Replace the key placeholder privately; never publish a write key in a public frontend.</p>
-            {example ? <><pre tabIndex={0} aria-label="JavaScript integration example"><code>{example}</code></pre><CopyButton text={example} label="Copy fetch example" /></> : <p>The public API address is unavailable. Check the dashboard runtime origin settings.</p>}
-          </section>}
-          <p><a href={base}>Back to project overview</a></p>
+          <p className="guided-back-link"><a href={base}>Back to project overview</a></p>
         </>
       ) : null}
     </div>

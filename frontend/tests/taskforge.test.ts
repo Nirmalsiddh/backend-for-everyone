@@ -53,7 +53,9 @@ test('builder renders fixed template, labelled fields/actions and checked defaul
   assert.match(html, /href="\/projects\/demo\/database"/);
   assert.match(html, /aria-describedby="continue-help"/);
   assert.match(html, /Checking your saved settings before you continue/);
-  assert.match(html, /4\. Ready/);
+  assert.match(html, /4\. <\/span>Ready/);
+  assert.match(html, /aria-current="step"/);
+  assert.match(html, /aria-describedby="task-create-description"/);
   assert.match(html, /Built your frontend/);
   const choices = guidedReducer(initialGuidedState, { type: 'toggle', action: 'delete', checked: false });
   assert.equal(guidedReducer(guidedReducer(choices, { type: 'continue' }), { type: 'back' }).actions.delete, false);

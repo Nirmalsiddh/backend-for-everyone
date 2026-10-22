@@ -25,7 +25,7 @@ export default function ProjectLayout({ children }: { children: ReactNode }) {
       <aside aria-label="Project navigation">
         <Link href="/projects">All projects</Link>
         {links.map(([path, label]) => (
-          <Link key={path} href={`/projects/${id}${path ? '/' + path : ''}`}>
+          <Link key={path} aria-current={guided && path === 'guided' ? 'page' : undefined} href={`/projects/${id}${path ? '/' + path : ''}`}>
             {label}
           </Link>
         ))}
