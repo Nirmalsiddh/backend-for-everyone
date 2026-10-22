@@ -313,11 +313,11 @@ function Playground() {
     window.history.replaceState(null, '', url);
   }
   return (
-    <>
+    <div className="playground-page">
       <h1>API playground</h1>
       <RuntimeErrorGuide />
       <CredentialGuide />
-      <ApplicationLoginGuide />
+      <details><summary>About application sign-in</summary><ApplicationLoginGuide /></details>
       <p>
         Requests operate on your connected database. Credentials remain in this
         page’s memory only.
@@ -374,7 +374,7 @@ function Playground() {
               to five typed filter clauses (AND only).
             </p>
           )}
-          <button type="button" onClick={generateExample}>
+          <button type="button" className="secondary" onClick={generateExample}>
             Generate example body
           </button>
           {target.resource.startsWith('auth/') && !auth.data?.enabled && (
@@ -385,6 +385,8 @@ function Playground() {
           )}
         </section>
       )}
+      <div className={`playground-workspace${result ? ' has-response' : ''}`}>
+      <div className="playground-request">
       <State query={p}>
         <State query={e}>
           <State query={w}>
@@ -738,8 +740,9 @@ function Playground() {
           operationId={deployedOperation.operation.operationId}
         />
       )}
+      </div>
       {result && (
-        <section>
+        <section className="playground-response">
           <h2>Response</h2>
           <p data-testid="response-status">HTTP {result.status}</p>
           <p>Elapsed: {result.elapsed} ms</p>
@@ -757,7 +760,8 @@ function Playground() {
           </details>
         </section>
       )}
-    </>
+      </div>
+    </div>
   );
 }
 

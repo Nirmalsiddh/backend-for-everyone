@@ -52,8 +52,15 @@ export default function Overview() {
   });
   return (
     <State query={p}>
-      <h1>{p.data?.name}</h1>
-      {p.data && <RuntimeUrl slug={p.data.slug} />}
+      <div className="overview-page">
+        <div className="overview-intro">
+          <div className="overview-identity">
+            <p className="overview-eyebrow">Project overview</p>
+            <h1>{p.data?.name}</h1>
+            <p className="overview-slug">Slug <code>{p.data?.slug}</code></p>
+          </div>
+          <Link className="action-link action-link-button" href={`/${base}/guided`}>Build with Guided Builder →</Link>
+        </div>
       {p.data?.runtimeState === 'suspended' && (
         <p role="alert" id="runtime-suspension">
           Project runtime is suspended. Dashboard management remains available.
@@ -76,26 +83,12 @@ export default function Overview() {
         }
       />
       <ProjectSetupChecklist steps={status.steps} />
-      <section>
-        <h2>Needs attention</h2>
-        {status.blockers.length ? (
-          <ul>
-            {status.blockers.map((s) => (
-              <li key={s.id}>
-                <Link href={s.href}>{s.label}</Link>: {s.detail}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p>No current setup blockers found in saved metadata.</p>
-        )}
-        <button
-          onClick={() => window.dispatchEvent(new Event('dashboard:refresh'))}
-        >
-          Refresh saved status
-        </button>
-      </section>
-      <section>
+      <div className="overview-details">
+        <div className="overview-runtime">
+          <h2>Runtime address</h2>
+          {p.data && <RuntimeUrl slug={p.data.slug} />}
+        </div>
+      <section className="overview-api">
         <h2>Deployed API summary</h2>
         {e.isPending ? (
           <p>Loading…</p>
@@ -118,20 +111,51 @@ export default function Overview() {
           <p>No deployed operations yet. Apply a table and enable an API.</p>
         )}
         {status.tested && <p>Tested during this visit</p>}
-      </section>
+      </section>      <section className="overview-attention">
+        <h2>Needs attention</h2>
+        {status.blockers.length ? (
+          <ul>
+            {status.blockers.map((s) => (
+              <li key={s.id}>
+                <Link className="action-link" href={s.href}>{s.label}</Link>: {s.detail}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p>No current setup blockers found in saved metadata.</p>
+        )}
+        <button
+          className="secondary"
+          onClick={() => window.dispatchEvent(new Event('dashboard:refresh'))}
+        >
+          Refresh saved status
+        </button>
+      </section>      </div>
+      <div className="overview-links">
+
       <p>
-        <Link href={`/${base}/docs`}>
+        <Link className="action-link" href={`/${base}/docs`}>
           View Docs and copy an integration example
         </Link>
       </p>
       <p>
-        <Link href={`/${base}/playground`}>Test your API</Link>
+        <Link className="action-link" href={`/${base}/playground`}>Test your API</Link>
       </p>
       <details>
         <summary>Optional: Workflows</summary>
         <p>{status.optionalSteps[0].detail}</p>
-        <Link href={`/${base}/workflows`}>Explore workflows</Link>
+        <Link className="action-link" href={`/${base}/workflows`}>Explore workflows</Link>
       </details>
+      </div>
+      <details className="project-safety">
+        <summary>Using this private-alpha platform</summary>
+        <p>
+        Private alpha. Use noncritical/test data and keep your own PostgreSQL
+        backups. Availability depends on your database. Schema changes are
+        limited after first Apply.
+        </p>
+      </details>
+      </div>
     </State>
   );
 }

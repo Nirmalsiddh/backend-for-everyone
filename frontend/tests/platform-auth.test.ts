@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
+import { AccountControl } from '../src/components/account-control';
 import { AuthForm, LogoutButton } from '../src/components/platform-auth';
 import { authHandler } from '../src/lib/server/auth-handler';
 import { cookieSettings } from '../src/lib/server/auth-config';
@@ -22,6 +23,19 @@ test('auth forms expose credentials inputs with correct autocomplete and no unre
     assert.doesNotMatch(html, /localStorage|sessionToken|forgot password/i);
   }
   assert.match(renderToStaticMarkup(createElement(LogoutButton)), /Log out/);
+});
+test('account control derives initials and exposes the complete identity with native disclosure semantics', () => {
+  for (const [email, initials] of [['first.last@example.test', 'FL'], ['solo@example.test', 'SO']]) {
+    const html = renderToStaticMarkup(createElement(AccountControl, { email }));
+    assert.ok(html.includes(`Account for ${email}`));
+    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /popover="auto"/);
+    assert.ok(html.includes(`aria-hidden="true">${initials}</span>`));
+    assert.doesNotMatch(html, /class="account-email"/);
+    assert.ok(html.includes(`class="account-menu-email">${email}</p>`));
+    assert.match(html, /Signed in as/);
+    assert.match(html, />Log out<|>\s+Log out\s+</);
+  }
 });
 test('login sets HttpOnly cookie and strips token; signup does not log in; logout confirms revocation', async (t) => {
   const original = fetch; t.after(() => { globalThis.fetch = original; });

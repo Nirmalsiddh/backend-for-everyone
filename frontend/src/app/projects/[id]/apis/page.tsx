@@ -123,7 +123,7 @@ function Editor({
     return success;
   }
   return (
-    <section>
+    <section className="api-config-panel">
       <MutationBoundary busy={action.busy}>
         <h2>{table.name}</h2>
         <p>Choose which operations your API should expose.</p>
@@ -175,6 +175,7 @@ function Editor({
             />
             <button
               type="button"
+              className="secondary"
               onClick={() =>
                 operations
                   .filter((op) => enabled[op])

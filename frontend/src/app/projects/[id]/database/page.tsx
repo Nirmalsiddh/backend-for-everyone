@@ -45,6 +45,7 @@ export default function Database() {
   );
   const absent = q.error instanceof ApiError && q.error.status === 404;
   return (
+    <div className="database-page">
     <MutationBoundary busy={action.busy}>
       <h1>Database connection</h1>
       <p>
@@ -81,6 +82,7 @@ export default function Database() {
             {q.data.lastTestedAt ?? 'Never'}
           </p>
           <button
+            className="secondary"
             disabled={action.busy}
             onClick={() => action.run(() => api(path + '/test', 'POST'))}
           >
@@ -194,5 +196,6 @@ export default function Database() {
       </section>
       <ActionState action={action} />
     </MutationBoundary>
+    </div>
   );
 }

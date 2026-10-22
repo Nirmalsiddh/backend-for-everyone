@@ -130,7 +130,7 @@ export function SchemaEditor({
       />
       {!table && (
         <section>
-          <button type="button" onClick={() => setChoosePreset(true)}>
+          <button type="button" className="secondary" onClick={() => setChoosePreset(true)}>
             Start with a Tasks example
           </button>
           {choosePreset && (
@@ -176,7 +176,7 @@ export function SchemaEditor({
           )}
         </section>
       )}
-      <form onSubmit={f.handleSubmit(saveValues)}>
+      <form className="schema-editor" onSubmit={f.handleSubmit(saveValues)}>
         <label>
           Table name
           <input
@@ -490,6 +490,7 @@ export function SchemaEditor({
             Apply one field bundle or one index at a time. Existing nullable column/reference additions remain supported.
           </p>
           <button
+            className="secondary"
             disabled={action.busy || f.formState.isDirty}
             onClick={() =>
               action.run(

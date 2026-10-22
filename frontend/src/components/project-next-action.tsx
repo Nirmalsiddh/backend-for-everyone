@@ -8,9 +8,9 @@ export function ProjectNextAction({
   tested: boolean;
 }) {
   return (
-    <section aria-labelledby="next-action">
+    <section className="next-action-panel" aria-labelledby="next-action">
       <h2 id="next-action">Next action</h2>
-      <Link href={action.href}>{action.label}</Link>
+      <Link className="action-link action-link-primary" href={action.href}>{action.label}</Link>
       <p>
         {tested
           ? 'Your API is ready to try in your application.'

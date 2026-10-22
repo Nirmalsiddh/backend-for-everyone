@@ -23,6 +23,7 @@ export default function Keys() {
     scope: string;
   }>({ defaultValues: { scope: 'read' } });
   return (
+    <div className="keys-page">
     <MutationBoundary busy={action.busy}>
       <h1>API keys</h1>
       <CredentialGuide />
@@ -92,7 +93,7 @@ export default function Keys() {
             </thead>
             <tbody>
               {q.data?.map((k) => (
-                <tr key={k.id}>
+                <tr key={k.id} data-revoked={!!k.revokedAt}>
                   <td>{k.name}</td>
                   <td>{k.keyPrefix}</td>
                   <td>
@@ -104,6 +105,7 @@ export default function Keys() {
                   <td>{k.revokedAt ? 'Revoked' : 'Active'}</td>
                   <td>
                     <button
+                      className="danger"
                       disabled={!!k.revokedAt || action.busy}
                       onClick={() => {
                         if (
@@ -128,5 +130,6 @@ export default function Keys() {
         )}
       </State>
     </MutationBoundary>
+    </div>
   );
 }

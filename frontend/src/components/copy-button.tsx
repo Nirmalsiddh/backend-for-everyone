@@ -4,7 +4,7 @@ export function CopyButton({ text, label }: { text: string; label: string }) {
   const [message, setMessage] = useState('');
   return (
     <>
-      <button
+      <button className="tertiary"
         type="button"
         aria-label={label}
         onClick={async () => {

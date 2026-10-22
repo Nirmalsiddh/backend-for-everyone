@@ -30,5 +30,5 @@ export default function DocsPage() {
     );
   if (query.isPending || !query.data)
     return <><TypeScriptClient key={id} projectId={id} /><p role="status">Loading documentation…</p></>;
-  return <><TypeScriptClient key={id} projectId={id} /><ApiDocs document={query.data} projectId={id} /></>;
+  return <><ApiDocs document={query.data} projectId={id} /><TypeScriptClient key={id} projectId={id} /></>;
 }

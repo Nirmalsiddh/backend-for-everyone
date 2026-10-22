@@ -19,7 +19,7 @@ export function ApiDocs({
 }) {
   const operations = docOperations(document);
   return (
-    <>
+    <div className="docs-page">
       <h1>API documentation</h1>
       <p>
         Deployed runtime contract. Drafts are excluded. Customer database
@@ -142,6 +142,6 @@ export function ApiDocs({
             ))}
         </section>
       ))}
-    </>
+    </div>
   );
 }

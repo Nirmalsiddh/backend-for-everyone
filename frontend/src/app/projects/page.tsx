@@ -48,10 +48,10 @@ export default function Projects() {
       );
   }, [name, slugEdited, setValue]);
   return (
-    <main>
+    <main className="projects-page">
       <h1>Projects</h1>
-      <p className="muted">Create and manage your projects.</p>
-      <section>
+      <p className="muted">Create and manage your backend projects.</p>
+      <section className="project-create">
         <h2>Create project</h2>
         <DirtyGuard dirty={formState.isDirty} />
         <form
@@ -85,31 +85,28 @@ export default function Projects() {
         </form>
         <ActionState action={action} />
       </section>
+      <h2 className="project-list-heading">Your projects</h2>
       <State query={query}>
         {query.data?.items.length === 0 ? (
-          <p>
+          <p className="empty-state">
             Create your first project, connect PostgreSQL, then build an API.
           </p>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Slug</th>
-              </tr>
-            </thead>
-            <tbody>
-              {query.data?.items.map((p) => (
-                <tr key={p.id}>
-                  <td>
-                    <Link href={`/projects/${p.id}`}>{p.name}</Link>
-                  </td>
-                  <td>{p.slug}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <ul className="project-list">
+            {query.data?.items.map((p) => (
+              <li key={p.id}>
+                <Link className="project-item" href={`/projects/${p.id}`} aria-labelledby={`project-name-${p.id}`}>
+                  <span className="project-item-copy">
+                    <span className="project-item-name" id={`project-name-${p.id}`}>{p.name}</span>
+                    <span className="project-item-slug">Slug: <code>{p.slug}</code></span>
+                  </span>
+                  <span className="project-item-action" aria-hidden="true">Open project <span>→</span></span>
+                </Link>
+              </li>
+            ))}
+          </ul>
         )}
+        <div className="project-pagination">
         <button
           className="secondary"
           disabled={offset === 0}
@@ -123,6 +120,7 @@ export default function Projects() {
         >
           Next
         </button>
+        </div>
       </State>
     </main>
   );

@@ -47,8 +47,11 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
     }
   }
   return (
-    <main>
+    <main className="auth-page">
+      <div className="auth-panel">
+      <p className="muted">Backend for Everyone</p>
       <h1>{signup ? 'Create platform account' : 'Sign in'}</h1>
+      <p className="muted">{signup ? 'Create a workspace for your backend projects.' : 'Welcome back. Sign in to your workspace.'}</p>
       <form onSubmit={submit}>
         <fieldset
           className="mutation-boundary"
@@ -83,9 +86,10 @@ export function AuthForm({ signup = false }: { signup?: boolean }) {
         </fieldset>
       </form>
       {message && <p role="status">{message}</p>}
-      <a href={signup ? '/login' : '/signup'}>
+      <a className="auth-switch" href={signup ? '/login' : '/signup'}>
         {signup ? 'Continue to sign in' : 'Create an account'}
       </a>
+      </div>
     </main>
   );
 }
