@@ -139,6 +139,7 @@ fieldset:disabled { opacity: .75; }
 .projects-page > h1 + p { margin-bottom: 28px; }
 .project-create { max-width: none; padding: 24px; margin-bottom: 32px; }
 .project-create form { max-width: 640px; }
+.project-create .row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
 .project-create h2 { margin-bottom: 4px; }
 .project-list-heading { margin: 0 0 16px; }
 .project-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
@@ -195,6 +196,7 @@ fieldset:disabled { opacity: .75; }
 }
 @media (max-width: 639px) {
   .project-create { padding: 20px 16px; }
+  .project-create .row { grid-template-columns: 1fr; gap: 0; }
   .project-item { align-items: flex-start; flex-direction: column; gap: 14px; padding: 18px; }
   .project-item-action { min-height: 24px; }
   .overview-intro h1 { font-size: 28px; }
