@@ -14,7 +14,7 @@ export const taskActions = [
 export type TaskAction = (typeof taskActions)[number]['id'];
 export type GuidedState = {
   template: 'task-manager';
-  view: 'build' | 'review' | 'preview';
+  view: 'build' | 'review' | 'creating' | 'ready';
   actions: Record<TaskAction, boolean>;
 };
 export const initialGuidedState: GuidedState = {
@@ -24,16 +24,16 @@ export const initialGuidedState: GuidedState = {
 };
 export type GuidedEvent =
   | { type: 'toggle'; action: TaskAction; checked: boolean }
-  | { type: 'continue' | 'back' | 'preview' | 'review' };
+  | { type: 'continue' | 'back' | 'creating' | 'ready' };
 
-// H1 only: transitions update local choices; they never configure a backend.
+// Local view and choice state; network setup is kept in taskforge-setup.
 export function guidedReducer(state: GuidedState, event: GuidedEvent): GuidedState {
   switch (event.type) {
     case 'toggle':
       return { ...state, actions: { ...state.actions, [event.action]: event.checked } };
     case 'continue': return { ...state, view: 'review' };
     case 'back': return { ...state, view: 'build' };
-    case 'preview': return { ...state, view: 'preview' };
-    case 'review': return { ...state, view: 'review' };
+    case 'creating': return { ...state, view: 'creating' };
+    case 'ready': return { ...state, view: 'ready' };
   }
 }

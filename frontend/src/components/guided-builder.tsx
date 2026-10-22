@@ -1,40 +1,134 @@
 'use client';
-import { useEffect, useReducer, useRef } from 'react';
-import {
-  guidedReducer, initialGuidedState, taskActions, taskFields,
-} from '../lib/taskforge';
+import { useEffect, useReducer, useRef, useState } from 'react';
+import { api } from '../lib/api';
+import { createTaskforge, inspectTaskforge, type ReadySetup, type SetupCheck } from '../lib/taskforge-setup';
+import { guidedReducer, initialGuidedState, taskActions, taskFields } from '../lib/taskforge';
+import { SecretDialog } from './secret-dialog';
+import { CopyButton } from './copy-button';
+import { RuntimeUrl } from './runtime-url';
 
 export function GuidedBuilder({ projectId }: { projectId: string }) {
   const [state, dispatch] = useReducer(guidedReducer, initialGuidedState);
+  const [check, setCheck] = useState<SetupCheck | null>(null);
+  const [ready, setReady] = useState<ReadySetup | null>(null);
+  const [error, setError] = useState('');
+  const [progress, setProgress] = useState('');
+  const [secret, setSecret] = useState('');
+  const [keyAttempted, setKeyAttempted] = useState(false);
+  const [keyBusy, setKeyBusy] = useState(false);
+  const [keyError, setKeyError] = useState('');
+  const [origin, setOrigin] = useState('');
+  const pending = useRef(false);
+  const keyPending = useRef(false);
   const heading = useRef<HTMLHeadingElement>(null);
   const previousView = useRef(state.view);
   useEffect(() => {
     if (previousView.current !== state.view) heading.current?.focus();
     previousView.current = state.view;
   }, [state.view]);
+  useEffect(() => {
+    let cancelled = false;
+    setOrigin(document.querySelector('meta[name="runtime-origin"]')?.getAttribute('content') ?? '');
+    void inspectTaskforge(projectId).then((result) => {
+      if (cancelled) return;
+      setCheck(result);
+      if (result.kind === 'ready') {
+        setReady(result.setup);
+        dispatch({ type: 'ready' });
+      }
+    }).catch(() => {
+      if (!cancelled) setError('We could not check this project. Reload this page to check again. No setup was started.');
+    });
+    return () => { cancelled = true; };
+  }, [projectId]);
   const selected = taskActions.filter((action) => state.actions[action.id]);
   const base = `/projects/${encodeURIComponent(projectId)}`;
+  const canCreate = check?.kind === 'clean' && !error && selected.length > 0;
   const title = state.view === 'build' ? 'Build your Task Manager'
-    : state.view === 'review' ? 'Review your backend' : 'Setup preview ready';
+    : state.view === 'review' ? 'Review your backend'
+    : state.view === 'creating' ? 'Creating your backend' : 'Backend Ready ✓';
+
+  async function create() {
+    if (pending.current || !canCreate) return;
+    pending.current = true;
+    dispatch({ type: 'creating' });
+    setError('');
+    setProgress('Checking your project…');
+    try {
+      const result = await createTaskforge(projectId, state.actions, setProgress);
+      setReady(result);
+      dispatch({ type: 'ready' });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : 'Setup stopped. Review your saved configuration before trying again.');
+      dispatch({ type: 'continue' });
+    } finally {
+      pending.current = false;
+    }
+  }
+
+  async function createKey() {
+    if (keyPending.current || keyAttempted || !ready) return;
+    keyPending.current = true;
+    setKeyAttempted(true);
+    setKeyBusy(true);
+    try {
+      const result = await api<{ key: string }>(`projects/${projectId}/api-keys`, 'POST', {
+        name: 'Taskforge demo', scope: 'read_write',
+      });
+      if (!result.key) throw new Error();
+      setSecret(result.key);
+    } catch {
+      setKeyError('The key creation response could not be confirmed. Check API keys before creating another key.');
+    } finally {
+      setKeyBusy(false);
+    }
+  }
+
+  const operations = ready?.endpoint.enabledOperations ?? [];
+  const enabledLabels = taskActions.filter((action) => {
+    const operation = { create: 'create', view: 'list', edit: 'update', delete: 'delete' } as const;
+    return operations.includes(operation[action.id]);
+  });
+  const apiUrl = ready && origin ? `${origin}/api/${ready.project.slug}` : '';
+  const example = apiUrl ? [
+    `const API_URL = ${JSON.stringify(apiUrl)};`,
+    'const API_KEY = "<your-read-write-api-key>";',
+    ...(operations.includes('create') ? [
+      '', 'const created = await fetch(`${API_URL}/tasks`, {',
+      '  method: "POST",', '  headers: { Authorization: `Bearer ${API_KEY}`, "Content-Type": "application/json" },',
+      '  body: JSON.stringify({ title: "Finish assignment", completed: false })',
+      '});', 'if (!created.ok) throw new Error(`Create failed: ${created.status}`);',
+    ] : []),
+    ...(operations.includes('list') ? [
+      '', 'const listed = await fetch(`${API_URL}/tasks`, {',
+      '  headers: { Authorization: `Bearer ${API_KEY}` }', '});',
+      'if (!listed.ok) throw new Error(`List failed: ${listed.status}`);',
+      'const { data: tasks } = await listed.json();',
+    ] : []),
+  ].join('\n') : '';
+
   return (
     <div className="guided-builder">
-      <p className="badge">Backend for Everyone · UI preview</p>
+      <p className="badge">Backend for Everyone</p>
       <nav aria-label="Builder progress">
         <ol>
-          {(['build', 'review', 'preview'] as const).map((view, index) => (
-            <li key={view} aria-current={state.view === view ? 'step' : undefined}>
-              {index + 1}. {view === 'build' ? 'Build' : view === 'review' ? 'Review' : 'Preview'}
+          {(['build', 'review', 'ready'] as const).map((view, index) => (
+            <li key={view} aria-current={state.view === view || (view === 'review' && state.view === 'creating') ? 'step' : undefined}>
+              {index + 1}. {view === 'build' ? 'Build' : view === 'review' ? 'Review' : 'Ready'}
             </li>
           ))}
         </ol>
       </nav>
       <h1 ref={heading} tabIndex={-1}>{title}</h1>
+      {error && <div role="alert"><p>{error}</p><p>Setup has stopped. No automatic retry will run.</p></div>}
+      {check && (check.kind === 'missing' || check.kind === 'blocked') && <p role="alert">{check.message}</p>}
+      {(error || check?.kind === 'blocked') && <p><a href={`${base}/schema`}>Review Tables &amp; fields</a> · <a href={`${base}/apis`}>Review APIs</a></p>}
       {state.view === 'build' ? (
         <>
-          <p>Tell us what your app needs. Review a simple plan for your backend before anything is created.</p>
+          <p>Tell us what your app needs. Review your choices, then create its task storage and API actions.</p>
           <section aria-labelledby="template-heading">
             <h2 id="template-heading">What are you building?</h2>
-            <p><strong>Task Manager</strong> — the template for this guided preview.</p>
+            <p><strong>Task Manager</strong> — the template for this guided setup.</p>
           </section>
           <section aria-labelledby="fields-heading">
             <h2 id="fields-heading">What information should your app store?</h2>
@@ -47,8 +141,7 @@ export function GuidedBuilder({ projectId }: { projectId: string }) {
               <legend>What should your app be able to do?</legend>
               {taskActions.map((action) => (
                 <label className="check" key={action.id} htmlFor={`task-${action.id}`}>
-                  <input id={`task-${action.id}`} type="checkbox"
-                    checked={state.actions[action.id]}
+                  <input id={`task-${action.id}`} type="checkbox" checked={state.actions[action.id]}
                     onChange={(event) => dispatch({ type: 'toggle', action: action.id, checked: event.target.checked })} />
                   {action.label}
                 </label>
@@ -56,43 +149,61 @@ export function GuidedBuilder({ projectId }: { projectId: string }) {
             </fieldset>
             <section aria-labelledby="database-heading">
               <h2 id="database-heading">Database setup</h2>
-              <p>Database setup is required before creating the real backend. This preview does not check or change your connection.</p>
+              {!check && !error && <p role="status">Checking saved project settings…</p>}
+              {check?.kind === 'clean' && <p>✓ Saved database connection found. Its permissions will be checked when storage is created.</p>}
               <a href={`${base}/database`}>Open Database Settings</a>
             </section>
-            <button type="submit">Continue</button>
+            {!selected.length && <p>Choose at least one task action.</p>}
+            <button type="submit" disabled={!canCreate}>Continue</button>
           </form>
         </>
-      ) : (
+      ) : state.view === 'creating' ? (
+        <div aria-busy="true"><p role="status">{progress}</p><p>Please keep this page open while your backend is created.</p></div>
+      ) : state.view === 'review' ? (
         <>
-          {state.view === 'preview' && (
-            <p role="status">Your choices are ready to review. No backend has been created or changed.</p>
-          )}
           <section aria-labelledby="data-heading">
-            <h2 id="data-heading">{state.view === 'review' ? 'Your Task Manager will store' : 'Planned data'}</h2>
-            {state.view === 'preview' && <p>Tasks storage — planned</p>}
+            <h2 id="data-heading">Your Task Manager will store</h2>
             <ul>{taskFields.map((field) => <li key={field.label}>{field.summary}</li>)}</ul>
           </section>
           <section aria-labelledby="actions-heading">
-            <h2 id="actions-heading">{state.view === 'review' ? 'Users will be able to' : 'Planned API actions'}</h2>
-            {selected.length ? <ul>{selected.map((action) => <li key={action.id}>{action.label}</li>)}</ul>
-              : <p>No actions selected. Go back to choose what your app can do.</p>}
+            <h2 id="actions-heading">Users will be able to</h2>
+            <ul>{selected.map((action) => <li key={action.id}>{action.label}</li>)}</ul>
           </section>
-          {state.view === 'review' ? (
-            <>
-              <p id="preview-help">H1 is a preview only. Create Backend shows your plan; it does not create storage or APIs.</p>
-              <button type="button" className="secondary" onClick={() => dispatch({ type: 'back' })}>Back</button>
-              <button type="button" aria-describedby="preview-help" onClick={() => dispatch({ type: 'preview' })}>Create Backend</button>
-            </>
-          ) : (
-            <>
-              <p>In H2, these choices will be applied using the platform’s existing backend engine.</p>
-              <button type="button" onClick={() => dispatch({ type: 'review' })}>Review choices</button>
-              <p><a href={`${base}/database`}>Database settings</a></p>
-              <p><a href={base}>Back to project overview</a></p>
-            </>
-          )}
+          <p>This will create Tasks storage and enable the selected actions in your connected database. It will not create an API key automatically.</p>
+          <button type="button" className="secondary" onClick={() => dispatch({ type: 'back' })}>Back</button>
+          <button type="button" disabled={!canCreate} onClick={() => void create()}>Create Backend</button>
+          <p><a href={`${base}/database`}>Database settings</a></p>
         </>
-      )}
+      ) : ready ? (
+        <>
+          <p role="status">Backend configured ✓</p>
+          <section><h2>Data</h2><p>✓ Tasks storage ready</p></section>
+          <section><h2>API</h2><ul>{enabledLabels.map((action) => <li key={action.id}>✓ {action.label}</li>)}</ul>
+            <ul>{operations.map((operation) => (
+              <li key={operation}><code>{({ create: 'POST', list: 'GET', get: 'GET', update: 'PATCH', delete: 'DELETE' } as const)[operation]} /tasks{['get', 'update', 'delete'].includes(operation) ? '/:id' : ''}</code></li>
+            ))}</ul>
+          </section>
+          <RuntimeUrl slug={ready.project.slug} />
+          <section><h2>Try your API</h2>
+            <p>API testing is separate from configuration. Use Playground to create a task, then view your tasks and confirm it appears.</p>
+            <p>Paste your project key into Playground’s runtime credential field. An existing read-and-write key also works.</p>
+            {operations.includes('create') && <p><a href={`${base}/playground?target=table:${ready.endpoint.id}:create`}>Test Create Task</a></p>}
+            {operations.includes('list') && <p><a href={`${base}/playground?target=table:${ready.endpoint.id}:list`}>Test View Tasks</a></p>}
+            <p>Copy this key now. It won’t be shown again. Keep it in trusted code, not a public production frontend bundle.</p>
+            <button type="button" disabled={keyAttempted || keyBusy} onClick={() => void createKey()}>Create demo API key</button>
+            {keyBusy && <p role="status">Creating demo key…</p>}
+            {keyAttempted && !keyBusy && !keyError && !secret && <p>Key creation completed. If you need another key, use API keys.</p>}
+            {keyError && <p role="alert">{keyError}</p>}
+            <p><a href={`${base}/keys`}>Manage API keys</a></p>
+          </section>
+          {secret && <SecretDialog secret={secret} onClose={() => setSecret('')} />}
+          {(operations.includes('create') || operations.includes('list')) && <section><h2>Connect your app</h2>
+            <p>This fetch example demonstrates controlled API consumption. A project read-and-write key must not be embedded in a public production frontend bundle.</p>
+            {example ? <><pre>{example}</pre><CopyButton text={example} label="Copy fetch example" /></> : <p>The public API address is unavailable. Check the dashboard runtime origin settings.</p>}
+          </section>}
+          <p><a href={base}>Back to project overview</a></p>
+        </>
+      ) : null}
     </div>
   );
 }
