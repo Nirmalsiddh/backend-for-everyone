@@ -1,6 +1,6 @@
 # Platform reference
 
-This document describes the broader backend platform. The [Taskforge walkthrough](../TASKFORGE.md) deliberately uses only a fixed Tasks template and key-only CRUD. For identity boundaries and failure semantics see [architecture](architecture.md); for operator commands see [recovery](../deploy/RECOVERY.md).
+This document describes the platform contracts and limitations. The [Guided Builder](../README.md#try-the-guided-flow) uses a fixed Tasks template and key-only CRUD. For identity boundaries and failure semantics see [architecture](architecture.md); for operator commands see [recovery](../deploy/RECOVERY.md).
 
 - [Projects and connections](#project-and-connection-management)
 - [Schema management](#schema-management), [evolution](#schema-evolution) and [indexes](#managed-indexes)

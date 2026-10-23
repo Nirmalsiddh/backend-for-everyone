@@ -1,8 +1,8 @@
 # Backend for Everyone
 
-Backend for Everyone helps students, frontend developers and solo builders turn an app idea into a working PostgreSQL-backed API. The Taskforge Guided Builder provides a focused Task Manager path: confirm the fields, choose actions, review, and create the backend without writing server routes or SQL.
+Backend for Everyone helps students, frontend developers and solo builders turn an app idea into a working PostgreSQL-backed API. The Guided Builder provides a focused Task Manager path: confirm the fields, choose actions, review, and create the backend without writing server routes or SQL.
 
-The problem is the gap between finishing an interface and connecting it to persistent data. This prototype reduces that setup work while keeping the database under the developer's control.
+The problem is the gap between finishing an interface and connecting it to persistent data. The product reduces that setup work while keeping the database under the developer's control.
 
 ## What it does
 
@@ -12,7 +12,7 @@ The problem is the gap between finishing an interface and connecting it to persi
 - Explicit API-key creation, Playground requests and a fetch example.
 - Recognition of matching Backend Ready configurations after reload.
 
-The underlying platform also supports a schema builder, application authentication and ownership policies, transactional workflows, relationships, bounded queries, generated OpenAPI/TypeScript clients and best-effort runtime history. These advanced features are outside the focused hackathon flow. See the [platform reference](docs/platform-reference.md).
+The platform also supports a schema builder, application authentication and ownership policies, transactional workflows, relationships, bounded queries, generated OpenAPI/TypeScript clients and best-effort runtime history. The Guided Builder offers a simpler path through the core storage and CRUD capabilities. See the [platform reference](docs/platform-reference.md).
 
 ## How it fits together
 
@@ -30,7 +30,7 @@ The stack is Node.js 24 LTS, strict TypeScript, Fastify, PostgreSQL and Drizzle 
 Requirements: Node.js 24 LTS, npm, PostgreSQL 16 or newer, and two separate databases:
 
 - A dedicated **platform database** for metadata. Its migration role needs DDL privileges.
-- A noncritical **customer/demo database**, with an existing schema such as `public`. Its role needs the table-creation and CRUD privileges used by the demo.
+- A noncritical **customer/demo database**, with an existing schema such as `public`. Its role needs table-creation and CRUD privileges.
 
 Create those databases with your PostgreSQL administration tool before continuing. The application does not provision databases or customer schemas. Do not use production data.
 
@@ -94,25 +94,32 @@ Open [local signup](http://127.0.0.1:3001/signup), create an account with a pass
 5. Open Test Create Task in Playground, choose API key credentials and POST a task. Then open Test View Tasks, supply the key again and GET the list.
 6. Return to Guided Builder and reload: matching saved configuration should still show Backend Ready.
 
-[Taskforge's judge walkthrough](TASKFORGE.md) includes the request body, expected results, demo preparation, and the hackathon contribution. Backend Ready confirms saved storage/API configuration; successful runtime requests are demonstrated separately. The walkthrough describes what to capture for a demo; this repository does not supply a recording link here.
+The Task Manager template has required `title`, optional `description`, required `completed` (default `false`), optional `due_date`, and an automatically generated UUID primary key. View tasks enables both list and single-task reads; Edit tasks uses PATCH.
+
+For Test Create Task, send:
+
+```json
+{"title":"Finish assignment","completed":false}
+```
+
+Expect HTTP 201. Open Test View Tasks, choose API key credentials and paste the same key again; GET/list should return the same task ID and values. Credentials clear when leaving Playground. Keys are shown once and clear from component memory when the dialog closes; clipboard and browser tooling are outside that guarantee. Use the placeholder-based fetch example on Ready to integrate from trusted code.
+
+Backend Ready confirms saved storage and API configuration; successful runtime requests verify the API separately. Existing matching configurations open Ready after reload without recreation. Choices reset if setup has not completed. Missing connections, conflicting configurations and incomplete operations require review through the linked management pages; there is no automatic repair or mutation replay.
+
+Playground uses a same-origin relay. A separate browser frontend needs its origin in the runtime CORS allowlist; Playground success does not verify that integration.
 
 ## Status and limitations
 
-This is a local hackathon prototype over an existing private-alpha backend platform. The Taskforge flow has recorded real PostgreSQL create/list and reload acceptance; [testing documentation](docs/testing.md) separates historical evidence from commands to rerun checks.
+The project is in private alpha, with local development and one-server deployment tooling. The Guided Builder has recorded real PostgreSQL create/list and reload acceptance; [testing documentation](docs/testing.md) separates historical evidence from commands to rerun checks.
 
 - PostgreSQL and the target schema must already exist. Connectivity checks do not prove every future DDL/CRUD permission.
-- Taskforge does not configure application login or owner-level private task access.
+- The Guided Builder does not configure application login or owner-level private task access. Configure application auth and ownership policies separately for user-specific data.
 - Project keys are shared credentials. Keep write keys in trusted code; do not publish them in browser bundles.
 - Incomplete or uncertain setup requires review. Submitted writes and DDL are never automatically replayed.
 - Advanced schema changes can block traffic and time out. Destructive edits and arbitrary SQL/customer code are unsupported.
 - Operational limits are designed for one backend instance and noncritical alpha use, not a production availability guarantee.
+- Focused keyboard/responsive checks do not establish formal WCAG compliance.
 
 ## Development and documentation
 
 Use [testing](docs/testing.md) for backend/frontend checks, disposable integration databases, browser acceptance and benchmark reproduction. Contributor rules are in [AGENTS.md](AGENTS.md). Hosting and incident procedures live in [deployment](deploy/README.md) and [recovery](deploy/RECOVERY.md).
-
-## Pre-existing work and AI assistance
-
-The core BaaS platform, schema/runtime engines, project system, API keys, authentication, original dashboard and Playground existed before the Taskforge hackathon. The hackathon work focused on the Guided Builder, its integration with the existing engine, and the beginner-facing demo and handoff experience. The whole backend platform was not built during the hackathon.
-
-ChatGPT and Codex assisted with planning, implementation support, debugging, review and validation. The developer chose the product direction, reviewed the work and made final decisions. Automated checks performed with AI assistance are not presented as independent developer testing. [Taskforge](TASKFORGE.md#contribution-and-disclosure) provides the contribution details.

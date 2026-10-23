@@ -2,7 +2,7 @@
 
 ## Product & Scope
 
-Build a Backend-as-a-Service/API builder incrementally. Customers retain application data in their own PostgreSQL databases. Our platform database stores users, projects, schema and endpoint metadata, encrypted connection credentials, workflow configuration, API key metadata, and sanitized logs. The implemented system includes customer connections, schema evolution, runtime APIs, application authentication, bounded workflows and the Taskforge Guided Builder. Keep the guided hackathon flow focused; document advanced capabilities separately.
+Build a Backend-as-a-Service/API builder incrementally. Customers retain application data in their own PostgreSQL databases. Our platform database stores users, projects, schema and endpoint metadata, encrypted connection credentials, workflow configuration, API key metadata, and sanitized logs. The implemented system includes customer connections, schema evolution, runtime APIs, application authentication, bounded workflows and the Guided Builder. Keep the guided product flow focused; document advanced capabilities separately.
 
 ## Architecture & Organization
 
@@ -26,4 +26,4 @@ Explain major architectural changes and new major dependencies before introducin
 
 ## Documentation
 
-Keep [README](README.md) as the setup/product entry point and [Taskforge](TASKFORGE.md) as the hackathon walkthrough. Maintain technical contracts in `docs/` and operator procedures in `deploy/`. Preserve pre-existing-work and AI-assistance disclosures. Label historical evidence; never present old test totals as current validation.
+Keep [README](README.md) as the product, setup and basic usage entry point. Maintain technical contracts in `docs/` and operator procedures in `deploy/`. Preserve architecture, security, database safety and operational constraints when updating documentation. Label historical evidence; never present old test totals as current validation.

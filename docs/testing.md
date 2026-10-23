@@ -55,7 +55,7 @@ Set `E2E_PLATFORM_DATABASE_URL` and `E2E_CUSTOMER_DATABASE_URL` privately for tw
 npm run test:e2e --prefix frontend
 ```
 
-For Taskforge alone:
+For the Guided Builder acceptance test:
 
 ```sh
 npm run test:e2e --prefix frontend -- tests/e2e/taskforge.spec.ts --reporter=line
@@ -63,7 +63,7 @@ npm run test:e2e --prefix frontend -- tests/e2e/taskforge.spec.ts --reporter=lin
 
 The [configuration](../frontend/playwright.config.ts) starts backend/dashboard servers on 3010/3011, applies platform migrations and uses a random customer schema and test encryption key. It does not edit backend `.env`. Test data remains in the supplied databases; remove the dedicated databases after inspection. Default runs use one worker and zero retries. Fixture accounts/projects must respect unchanged signup/project limits; concurrent runs can interfere with those limits.
 
-Taskforge disables screenshots, video and traces to avoid recording the key. Other failure screenshots may contain disposable test data; traces are disabled. Keep artifacts private and never capture credentials or one-time key dialogs for public demo evidence. Synthetic-response UI screenshots must be labeled as mock UI. Check actual widths 1280, 960, 768 and 375, keyboard progression/focus, dialogs and overflow when presentation changes. Focused checks do not establish formal WCAG or browser-zoom certification. Desktop Chromium is the declared alpha authoring browser; Firefox smoke is limited coverage.
+The Guided Builder acceptance test disables screenshots, video and traces to avoid recording the key. Other failure screenshots may contain disposable test data; traces are disabled. Keep test artifacts private and avoid recording credentials or one-time key dialogs. Distinguish synthetic-response UI checks from real API acceptance. Check actual widths 1280, 960, 768 and 375, keyboard progression/focus, dialogs and overflow when presentation changes. Focused checks do not establish formal WCAG or browser-zoom certification. Desktop Chromium is the declared alpha authoring browser; Firefox smoke is limited coverage.
 
 ## Coverage worth preserving
 
@@ -82,7 +82,7 @@ Taskforge disables screenshots, video and traces to avoid recording the key. Oth
 
 ## Manual product and deployment checks
 
-For the focused hackathon path, follow [Taskforge](../TASKFORGE.md). For broader product acceptance:
+Start with the [Guided Builder usage flow](../README.md#try-the-guided-flow), then exercise broader product behavior:
 
 1. Verify unauthenticated `/projects` redirects to login. Sign up without automatic login, sign in, create a project, and reload. A second account must neither list nor open the first account's project.
 2. Check HttpOnly/SameSite/Path/lifetime and, over HTTPS, Secure/`__Host-` cookies. No platform token should appear in readable cookies, browser storage or login JSON. Logout must revoke the previous session.
@@ -105,7 +105,7 @@ Restore in an isolated network with no customer access. Verify checksum/matching
 
 The following is a condensed historical record from the former validation reports, not new execution. Their full reports remain in Git history before this consolidation.
 
-- **Taskforge acceptance:** isolated local PostgreSQL 18 confirmed Tasks Apply, all five runtime operations, explicit key creation, POST 201 and GET/list of the same task ID/values. Reload reached Ready with zero configuration writes. Readable cookies/localStorage/sessionStorage did not contain the plaintext key. Later presentation checks used synthetic responses and did not rerun that database flow.
+- **Guided Builder acceptance:** isolated local PostgreSQL 18 confirmed Tasks Apply, all five runtime operations, explicit key creation, POST 201 and GET/list of the same task ID/values. Reload reached Ready with zero configuration writes. Readable cookies/localStorage/sessionStorage did not contain the plaintext key. Later presentation checks used synthetic responses and did not rerun that database flow.
 - **Schema/index/query/client checks:** prior full PostgreSQL runs covered upgrade/recovery, exact tagged legacy formats, real compiled clients, scalar precision, owner isolation and independent include authorization. Historical frontend/backend/browser totals varied by release and should not be treated as current counts.
 - **Deployment validation (2026-10-18) and recovery drills (2026-10-20):** disposable Docker/HTTPS environments verified non-root images, private networking, separate bootstrap/migrator/app roles, application-role DDL denial, migration gates, original-session persistence, backup/isolated restore, process interruption, offline rotation, log-secret absence and failure containment. Local CA and synthetic isolated TLS fixtures did not validate public ACME or an external VPS. GitHub-hosted CI/registry publication was not established by those local checks.
 - **Relationship persistence:** disposable compiled containers retained session/key use, reference metadata, exact rows and restricted deletion after restart. This was loopback HTTP acceptance, not hosted TLS evidence.
