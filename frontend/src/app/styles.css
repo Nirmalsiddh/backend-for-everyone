@@ -463,7 +463,8 @@ fieldset:disabled { opacity: .75; }
 .guided-builder .guided-ready-summary { display: grid; grid-template-columns: 1fr 2fr; gap: 24px; margin-bottom: 24px; padding-bottom: 24px; border-bottom: 1px solid var(--guided-border); }
 .guided-builder .guided-ready-summary h2 { margin-bottom: 8px; font-size: 13px; color: var(--guided-muted); }
 .guided-builder .guided-ready-summary p { margin: 0; font-weight: 600; }
-.guided-builder .guided-ready-summary ul { display: flex; flex-wrap: wrap; gap: 4px 16px; padding: 0; margin: 0; list-style: none; font-size: 14px; }
+.guided-builder .guided-ready-summary ul { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 20px; padding: 0; margin: 0; list-style: none; font-size: 14px; }
+.guided-builder .guided-ready-summary li { margin: 0; white-space: nowrap; }
 .guided-builder .guided-api > h2 { margin-bottom: 12px; }
 .guided-builder .guided-url { padding: 16px; border: 1px solid var(--guided-border); border-radius: var(--guided-control-radius); background: white; }
 .guided-builder .guided-url section { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; }
