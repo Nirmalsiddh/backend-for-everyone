@@ -28,13 +28,13 @@ Compose constructs private `PLATFORM_DATABASE_URL` values using these passwords.
 
 For private GHCR packages, authenticate the deployment account with `docker login ghcr.io` using an interactive read-packages credential. Never pass a registry token as an argument or store it in Git.
 
-Images use Node 24 Debian/glibc, non-root runtime users and compiled backend code. Root build context includes shared contracts. No .env files enter the image. Use a release such as `v0.3.0-alpha.1`, commit tags `sha-COMMIT`, and preferably resolved image digests in production. Never rely solely on `latest` or reassign release tags; record/pin digests. CI publishes release images only for version tags after checks pass; it never deploys. Set BACKEND_IMAGE/FRONTEND_IMAGE to the actual GHCR repository names produced by your repository's workflow.
+Images use Node 24 Debian/glibc, non-root runtime users and compiled backend code. Root build context includes shared contracts. No .env files enter the image. Use matching immutable release/commit image references and preferably resolved image digests in deployment. Example env tags are placeholders, not a recommendation to deploy an older release. Never rely solely on `latest` or reassign release tags; record/pin digests. CI publishes release images only for version tags after checks pass; it never deploys. Set BACKEND_IMAGE/FRONTEND_IMAGE to the actual GHCR repository names produced by your repository's workflow.
 
 ## Network and proxy trust
 
 The proxy bridge contains Caddy, Next.js and Fastify. A separate internal bridge contains backend, migration job and platform PostgreSQL. The frontend cannot directly reach the database through that network. Choose PROXY_SUBNET and CADDY_IP/FRONTEND_IP/BACKEND_IP that do not overlap host/VPN networks. Compose gives stable exact addresses; changing the subnet requires changing all peer addresses together. Avoid Docker host networking.
 
-Caddy accepts only configured domains. The dashboard domain has an operator-maintained TESTER_CIDRS allowlist; use space-separated exact IPs or narrow CIDRs, never 0.0.0.0/0 or ::/0. It includes signup/login and all dashboard routes. If tester IPs are too dynamic, use a separately managed VPN/access gateway with a fixed ingress address and explicitly reviewed proxy trust rather than opening signup or adding product invitations in this milestone.
+Caddy accepts only configured domains. The dashboard domain has an operator-maintained TESTER_CIDRS allowlist; use space-separated exact IPs or narrow CIDRs, never 0.0.0.0/0 or ::/0. It includes signup/login and all dashboard routes. If tester IPs are too dynamic, use a separately managed VPN/access gateway with a fixed ingress address and explicitly reviewed proxy trust rather than opening signup. Product invitations are not implemented.
 
 Caddy overwrites X-Real-IP and X-Forwarded-For from its connection peer and removes Forwarded. Next.js reads only the configured overwritten X-Real-IP for auth forwarding and creates a fresh X-Forwarded-For. Fastify trusts forwarding only from the exact configured Caddy/Next.js source addresses. No unrestricted trustProxy or public forwarding chains are accepted. Internal network membership and Docker administrator access are part of the trust boundary.
 
@@ -65,25 +65,23 @@ From the checked-out release at the repository root:
 ```sh
 export DEPLOY_ENV=/etc/private-alpha/deploy.env
 export BACKUP_DIR=/var/backups/private-alpha
+export MAINTENANCE_DIR=/var/lib/private-alpha/maintenance
+export SMOKE_CONFIG=/etc/private-alpha/gate-smoke.json
 ./deploy/deploy.sh
 ```
 
-The script uses a host flock, validates Compose, pulls release images, starts/waits for PostgreSQL, backs up an existing schema, runs one migration container, then starts matching services behind maintenance and runs the authenticated smoke gate before reopening. Export MAINTENANCE_DIR and SMOKE_CONFIG as documented in RECOVERY.md. The migration runner also takes a PostgreSQL advisory lock, so concurrent manual migration jobs serialize. No application startup performs migrations.
+The script takes a host lock, validates configuration, pulls matching images, closes Caddy ingress, sets maintenance, drains/stops applications and starts PostgreSQL. It backs up existing metadata, runs one migration job, starts matching services, checks readiness/decryption preflight, then admits only the configured smoke operator. Traffic reopens only after authenticated smoke succeeds. Failures leave ingress closed; do not substitute a shorter manual sequence that skips these gates.
 
-Equivalent explicit commands (serialize them with the same operator/deploy lock):
+Set `MAINTENANCE_DIR` to the same absolute protected directory in the shell and deployment env. The gate's mode-0600 JSON contains `appOrigin`, `apiOrigin` and an existing operator email/password. Exact smoke-operator CIDRs must also be approved tester CIDRs. On first deployment, bootstrap the account from that approved source while maintenance remains active, then rerun deployment. See [maintenance and smoke](RECOVERY.md#deployment-maintenance-and-smoke-gate).
+
+Read-only configuration inspection:
 
 ```sh
 ./deploy/compose.sh config --quiet
-./deploy/compose.sh pull
-./deploy/compose.sh up -d --wait platform-postgres
-# Existing deployment only, before migrations:
-./deploy/backup.sh
-./deploy/compose.sh run --rm migrate
-./deploy/compose.sh up -d --wait backend frontend caddy
 ./deploy/compose.sh ps
 ```
 
-For a local build, set immutable local validation image tags in an external env file and run `./deploy/compose.sh build backend frontend` instead of pull. Production images run node dist/server.js and ordinary Next.js production start on 0.0.0.0:3001. The compiled migration runner and reviewed SQL/journal are included. Schema migration generation remains a development task.
+For a local build, set immutable local validation image tags in an external env file and run `./deploy/compose.sh build backend frontend` instead of pull. Run the normal gated deployment with `DEPLOY_SKIP_PULL=1` when deliberately using those already-built local images. Production images run node dist/server.js and ordinary Next.js production start on 0.0.0.0:3001. The compiled migration runner and reviewed SQL/journal are included. Schema migration generation remains a development task.
 
 Health: PostgreSQL uses pg_isready; backend /health/live is independent of DB; /health/ready uses a separate bounded connection to verify latest migration hash and minimum auth schema; frontend /health/ready checks origin/cookie configuration. Health responses contain only generic status. Backend health routes are private and require no platform session. Compose dependency conditions aid startup; an unhealthy running container is not automatically restarted just because a health check fails. A DB outage should make readiness fail without restart loops.
 
@@ -150,11 +148,11 @@ Set PGHOST/PGPORT/PGUSER/PGDATABASE and a mode-0600 PGPASSFILE for the isolated 
 
 Application logs are structured stdout/stderr with request ID, route template, status, elapsed time and safe principal IDs. Never enable body/SQL/header dumps. Caddy error logs strip request/response-header objects, and access logging is not enabled; do not add raw URL/query/header logs. Compose rotates json-file logs at 10 MB x 3 per service. Monitor availability, disk/memory, backup/upload failures and certificate health. External error tracking is deferred.
 
-Platform/customer auth counters and hashing/runtime capacity are process-local; counters reset on restart. One backend only. Current fresh-client limits are appropriate for low-volume alpha, not a global total connection limit: runtime/workflows share ten transaction slots, customer auth has its own budget, diagnostics/schema operations are separate. No pooling redesign or Redis is introduced. Horizontal scaling needs shared limits, coordinated budgets and migration discipline.
+Platform/customer auth counters and hashing/runtime capacity are process-local; counters reset on restart. One backend only. All fresh customer clients share a 16-slot ceiling. Runtime/workflows and application auth each have at most ten category slots; schema, diagnostics and reconciliation each at most two, subject to the shared total. See [current limits](RECOVERY.md#limits-and-failure-semantics). No pooling redesign or Redis is introduced. Horizontal scaling needs shared limits, coordinated budgets and migration discipline.
 
 For application rollback, deploy previous compatible immutable image tags/digests and wait for readiness/smoke checks. Never automatically down-migrate. Prefer forward repair; backup restore is a deliberate downtime/data-loss recovery operation. A newer schema may be incompatible with old readiness/application code. Customer schema changes are independent and are not undone by platform-image rollback.
 
-Limitations: no email verification/reset, invitations, teams, billing, enterprise secrets manager, multi-region/HA, automatic failover or scaling. Customer availability, TLS certificates and connection quotas affect runtime. Schema/workflow mutation limits and uncertain-write recovery remain as documented in the product README. This milestone adds no production email, queues, observability platform, Kubernetes or Terraform.
+Limitations: no email verification/reset, invitations, teams, billing, enterprise secrets manager, multi-region/HA, automatic failover or scaling. Customer availability, TLS certificates and connection quotas affect runtime. Schema/workflow mutation limits and uncertain-write recovery remain in the [platform reference](../docs/platform-reference.md) and [recovery runbook](RECOVERY.md). There is no production email, durable job queue, external telemetry system, Kubernetes or Terraform. Owner-only best-effort runtime history is described in the [platform reference](../docs/platform-reference.md#runtime-observability).
 
 ## Generated API documentation
 
@@ -179,3 +177,15 @@ For independent local validation with backend dev dependencies installed:
 `cd backend && npm exec -- validate-api /path/to/project-openapi.json`.
 Workflow dynamic database results deliberately use unconstrained JSON schemas.
 Examples are synthetic; stored defaults and workflow literal values are never copied.
+
+## Before inviting testers
+
+- Pin matching backend/frontend images and migration history; run the [documented checks](../docs/testing.md) on the intended release.
+- Verify narrow tester/probe CIDRs, exact allowed browser origins, approved DB destinations, verified TLS and private management/health routes.
+- Protect env/smoke/key files, validate a fresh backup and keep historical encryption keys separately. Verify encrypted off-server upload rather than assuming local backup success is sufficient.
+- Resolve uncertain schema/auth operations using dry-run reconciliation. Require readiness, decrypt preflight and authenticated smoke before reopening ingress.
+- Repeat isolated restore containment and confirm old keys/sessions remain revoked and projects suspended until explicit review/resume.
+- Exercise key-only, application-auth/owner and workflow personas, including revocation, stale dependencies, unavailable databases and uncertain writes. Check keyboard access and 375px core forms.
+- Check customer connection headroom, disk/memory, cleanup throughput, backup/upload schedule and certificate health. Do not add replicas without redesigning process-local limits.
+
+[Testing and evidence](../docs/testing.md#recorded-evidence) records prior disposable deployment drills and their boundaries. Public DNS/ACME, real remote DB access, IPv4/IPv6 firewall rules, certificate/DNS changes, encrypted off-server backups and COMMIT-boundary power loss still require checks on the actual target. Local containers or a trusted lab CA do not establish external deployment readiness.
